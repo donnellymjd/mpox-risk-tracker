@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Unofficial NYC mpox spread risk indicator built from public NYC Health case data."
+    />
+    <title>NYC Mpox Spread Risk Tracker</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">d2sci public health tracker</p>
+        <h1>NYC Mpox Spread Risk</h1>
+      </div>
+      <a class="source-link" href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">
+        NYC Health data
+      </a>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="Current mpox risk summary">
+        <div class="metric metric-status">
+          <span class="metric-label">Current status</span>
+          <strong id="riskBand">Loading</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Risk index</span>
+          <strong id="riskIndex">--</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Cases, last 28 days</span>
+          <strong id="last28">--</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Latest data</span>
+          <strong id="latestDate">--</strong>
+        </div>
+      </section>
+
+      <section class="chart-section">
+        <div class="section-heading">
+          <div>
+            <h2>Spread Risk Indicator</h2>
+            <p>Positive values indicate accelerating reported cases after smoothing.</p>
+          </div>
+          <select id="yearMode" aria-label="Year display">
+            <option value="recent">Recent years</option>
+            <option value="all">All years</option>
+            <option value="current">Current year</option>
+          </select>
+        </div>
+        <div class="chart-frame">
+          <svg id="riskChart" role="img" aria-label="Mpox spread risk indicator by year"></svg>
+        </div>
+        <div id="riskLegend" class="legend" aria-label="Risk chart legend"></div>
+      </section>
+
+      <section class="chart-section">
+        <div class="section-heading">
+          <div>
+            <h2>Cumulative Cases</h2>
+            <p>Year-to-date case totals, aligned by month and day.</p>
+          </div>
+        </div>
+        <div class="chart-frame">
+          <svg id="cumulativeChart" role="img" aria-label="Cumulative mpox cases by year"></svg>
+        </div>
+        <div id="caseLegend" class="legend" aria-label="Cumulative chart legend"></div>
+      </section>
+
+      <section class="method-section">
+        <h2>Method</h2>
+        <p>
+          This unofficial tracker fetches public NYC Health mpox case data, smooths daily-equivalent
+          cases with a 14-day Gaussian window, and converts the day-to-day change in smoothed log
+          cases into a normalized spread indicator. Weekly case counts are distributed across their
+          reporting week before smoothing.
+        </p>
+        <p>
+          It is intended for situational awareness, not clinical or individual medical guidance.
+          Follow NYC Health guidance for prevention, testing, vaccination, and treatment decisions.
+        </p>
+        <dl id="sourceList" class="source-list"></dl>
+      </section>
+    </main>
+
+    <footer>
+      <span>Analysis by @donnellymjd.bsky.social</span>
+      <span id="generatedAt">Generated --</span>
+    </footer>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>
