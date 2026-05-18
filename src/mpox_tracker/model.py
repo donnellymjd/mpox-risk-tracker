@@ -15,6 +15,15 @@ from . import config
 from .sources import SourceMetadata
 
 
+RISK_BANDS = [
+    {"label": "Very Low", "min": None, "max": 0.0},
+    {"label": "Low", "min": 0.0, "max": 0.5},
+    {"label": "Moderate", "min": 0.5, "max": 1.0},
+    {"label": "Moderate-High", "min": 1.0, "max": 1.5},
+    {"label": "High", "min": 1.5, "max": None},
+]
+
+
 @dataclass(frozen=True)
 class BuildResult:
     cases: pd.DataFrame
@@ -126,20 +135,17 @@ def _day_axis(date: pd.Timestamp) -> tuple[str, int] | None:
 
 
 def build_seasonal(cases: pd.DataFrame) -> pd.DataFrame:
-    rows: list[pd.DataFrame] = []
+    seasonal = cases.sort_values("date").copy()
+    seasonal["smoothed_cases"] = gaussian_rolling_mean(seasonal["cases"])
+    log_smoothed = gaussian_rolling_mean(np.log1p(seasonal["cases"]))
+    seasonal["risk_index"] = (
+        log_smoothed - log_smoothed.shift(1)
+    ) / config.RISK_NORMALIZATION_FACTOR
+    seasonal["cumulative_cases"] = seasonal.groupby("year")["cases"].cumsum()
 
-    for year, year_frame in cases.groupby("year", sort=True):
-        year_frame = year_frame.sort_values("date").copy()
-        year_frame["smoothed_cases"] = gaussian_rolling_mean(year_frame["cases"])
-        log_smoothed = gaussian_rolling_mean(np.log1p(year_frame["cases"]))
-        year_frame["risk_index"] = (
-            log_smoothed - log_smoothed.shift(1)
-        ) / config.RISK_NORMALIZATION_FACTOR
-        year_frame["cumulative_cases"] = year_frame["cases"].cumsum()
-        year_frame["year"] = int(year)
-        rows.append(year_frame)
+    jan_2024 = (seasonal["date"] >= "2024-01-01") & (seasonal["date"] < "2024-02-01")
+    seasonal.loc[jan_2024, "risk_index"] = np.nan
 
-    seasonal = pd.concat(rows, ignore_index=True)
     axis = seasonal["date"].apply(_day_axis)
     seasonal = seasonal[axis.notna()].copy()
     seasonal["month_day"] = [item[0] for item in axis[axis.notna()]]
@@ -162,11 +168,15 @@ def _json_number(value: object) -> float | int | None:
 def _risk_band(value: float | None) -> str:
     if value is None:
         return "Unknown"
-    if value >= 1:
-        return "Elevated"
-    if value >= 0:
+    if value < 0:
+        return "Very Low"
+    if value < 0.5:
+        return "Low"
+    if value < 1.0:
         return "Moderate"
-    return "Low"
+    if value < 1.5:
+        return "Moderate-High"
+    return "High"
 
 
 def build_payload(
@@ -221,6 +231,15 @@ def build_payload(
             "smoothing_window_days": config.SMOOTHING_WINDOW_DAYS,
             "smoothing_std_days": config.SMOOTHING_STD_DAYS,
             "risk_normalization_factor": config.RISK_NORMALIZATION_FACTOR,
+            "risk_bands": RISK_BANDS,
+            "indicator_exclusions": [
+                {
+                    "field": "risk_index",
+                    "start": "2024-01-01",
+                    "end": "2024-01-31",
+                    "reason": "January 2024 is suppressed because the indicator is unusually sensitive during this low-count period.",
+                }
+            ],
         },
         "sources": [source.to_dict() for source in sources],
         "series": records,

@@ -47,11 +47,7 @@
             <h2>Spread Risk Indicator</h2>
             <p>Positive values indicate accelerating reported cases after smoothing.</p>
           </div>
-          <select id="yearMode" aria-label="Year display">
-            <option value="recent">Recent years</option>
-            <option value="all">All years</option>
-            <option value="current">Current year</option>
-          </select>
+          <div id="yearControls" class="year-controls" aria-label="Select years"></div>
         </div>
         <div class="chart-frame">
           <svg id="riskChart" role="img" aria-label="Mpox spread risk indicator by year"></svg>
@@ -85,6 +81,37 @@
           Follow NYC Health guidance for prevention, testing, vaccination, and treatment decisions.
         </p>
         <dl id="sourceList" class="source-list"></dl>
+      </section>
+
+      <section class="resources-section">
+        <div class="section-heading">
+          <div>
+            <h2>Mpox Health Resources</h2>
+            <p>Respectful public health information, with LGBTQ+ community-centered sources first.</p>
+          </div>
+        </div>
+        <ul class="resource-list">
+          <li>
+            <a href="https://callen-lorde.org/mpox/">Callen-Lorde: Mpox</a>
+            <span>LGBTQ+ health-center guidance on symptoms, exposure, vaccination, care, and stigma reduction.</span>
+          </li>
+          <li>
+            <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health: Mpox</a>
+            <span>Local transmission, prevention, symptoms, recent NYC case context, and links to city services.</span>
+          </li>
+          <li>
+            <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox-vaccination.page">NYC Health: Mpox Vaccination</a>
+            <span>Vaccine eligibility, two-dose guidance, post-exposure timing, and the NYC Health Map.</span>
+          </li>
+          <li>
+            <a href="https://www.nyc.gov/site/doh/health/health-topics/sexual-health.page">NYC Sexual Health Services</a>
+            <span>Sexual health clinics, vaccination context, STI prevention, and LGBTQ+ health resources.</span>
+          </li>
+          <li>
+            <a href="https://www.cdc.gov/monkeypox/prevention/safer-sex-social-gatherings-and-mpox.html">CDC: Safer Sex and Social Gatherings</a>
+            <span>Harm-reduction guidance for sex, parties, travel, events, and close-contact settings.</span>
+          </li>
+        </ul>
       </section>
     </main>
 

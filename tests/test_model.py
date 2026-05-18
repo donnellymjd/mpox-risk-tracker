@@ -8,6 +8,7 @@ from mpox_tracker.model import (
     combine_cases,
     expand_weekly_cases,
     gaussian_rolling_mean,
+    _risk_band,
 )
 
 
@@ -72,3 +73,47 @@ def test_build_seasonal_omits_feb_29() -> None:
     seasonal = build_seasonal(cases)
 
     assert "Feb 29" not in seasonal["month_day"].tolist()
+
+
+def test_build_seasonal_uses_continuous_context_across_years() -> None:
+    cases = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-12-31", "2025-01-01", "2025-01-02"]),
+            "cases": [4.0, 4.0, 4.0],
+            "source": ["test", "test", "test"],
+            "year": [2024, 2025, 2025],
+        }
+    )
+
+    seasonal = build_seasonal(cases)
+    jan_1 = seasonal.loc[seasonal["date"] == pd.Timestamp("2025-01-01")].iloc[0]
+
+    assert pd.notna(jan_1["risk_index"])
+
+
+def test_build_seasonal_nulls_january_2024_risk_indicator() -> None:
+    cases = pd.DataFrame(
+        {
+            "date": pd.date_range("2023-12-28", "2024-02-02", freq="D"),
+            "cases": [1.0] * 37,
+            "source": ["test"] * 37,
+        }
+    )
+    cases["year"] = cases["date"].dt.year
+
+    seasonal = build_seasonal(cases)
+    january_2024 = seasonal[
+        (seasonal["date"] >= "2024-01-01") & (seasonal["date"] < "2024-02-01")
+    ]
+    february_2024 = seasonal[seasonal["date"] == pd.Timestamp("2024-02-01")]
+
+    assert january_2024["risk_index"].isna().all()
+    assert pd.notna(february_2024.iloc[0]["risk_index"])
+
+
+def test_risk_band_thresholds() -> None:
+    assert _risk_band(-0.1) == "Very Low"
+    assert _risk_band(0.1) == "Low"
+    assert _risk_band(0.7) == "Moderate"
+    assert _risk_band(1.2) == "Moderate-High"
+    assert _risk_band(1.6) == "High"

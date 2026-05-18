@@ -7,6 +7,14 @@ const palette = {
   2027: "#237a57",
 };
 
+const riskBandColors = {
+  "Very Low": "rgba(35,122,87,0.11)",
+  Low: "rgba(88,145,84,0.12)",
+  Moderate: "rgba(178,122,5,0.14)",
+  "Moderate-High": "rgba(191,94,45,0.13)",
+  High: "rgba(183,54,44,0.14)",
+};
+
 const monthTicks = [
   ["Jan", 1],
   ["Feb", 32],
@@ -32,25 +40,38 @@ const compact = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
+const precise = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
+
 let trackerData = null;
+let selectedYears = new Set();
 
 function byId(id) {
   return document.getElementById(id);
 }
 
-function valueText(value, fallback = "--") {
-  return value === null || value === undefined ? fallback : compact.format(value);
+function valueText(value, fallback = "--", formatter = compact) {
+  return value === null || value === undefined ? fallback : formatter.format(value);
 }
 
 function colorForYear(year) {
   return palette[year] || "#2f665f";
 }
 
-function yearsForMode(data, mode) {
-  const years = [...new Set(data.series.map((row) => row.year))].sort((a, b) => a - b);
-  if (mode === "current") return [data.current_year];
-  if (mode === "recent") return years.slice(-3);
-  return years;
+function classNameForBand(label) {
+  return String(label || "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function availableYears(data) {
+  return [...new Set(data.series.map((row) => row.year))].sort((a, b) => a - b);
+}
+
+function defaultYears(data) {
+  return availableYears(data).slice(-3);
 }
 
 function groupByYear(rows, years) {
@@ -119,9 +140,153 @@ function drawLegend(target, years, currentYear) {
   });
 }
 
+function setupYearControls(data) {
+  const controls = byId("yearControls");
+  clear(controls);
+
+  availableYears(data).forEach((year) => {
+    const label = document.createElement("label");
+    label.className = "year-toggle";
+
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = String(year);
+    input.checked = selectedYears.has(year);
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        selectedYears.add(year);
+      } else {
+        selectedYears.delete(year);
+      }
+      render();
+    });
+
+    const swatch = document.createElement("span");
+    swatch.className = "year-toggle-swatch";
+    swatch.style.background = colorForYear(year);
+
+    label.append(input, swatch, document.createTextNode(String(year)));
+    controls.append(label);
+  });
+}
+
+function riskBandRanges(data, yMin, yMax) {
+  const bands = data.parameters?.risk_bands || [];
+  return bands
+    .map((band) => ({
+      label: band.label,
+      from: band.min === null || band.min === undefined ? yMin : band.min,
+      to: band.max === null || band.max === undefined ? yMax : band.max,
+      color: riskBandColors[band.label] || "rgba(83,98,91,0.1)",
+    }))
+    .filter((band) => band.to > yMin && band.from < yMax)
+    .map((band) => ({
+      ...band,
+      from: Math.max(band.from, yMin),
+      to: Math.min(band.to, yMax),
+    }));
+}
+
+function ensureTooltip(svg) {
+  const frame = svg.closest(".chart-frame");
+  let tooltip = frame.querySelector(".chart-tooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    tooltip.setAttribute("role", "status");
+    frame.append(tooltip);
+  }
+  tooltip.hidden = true;
+  return tooltip;
+}
+
+function tooltipRows(grouped, dayIndex, field, formatter) {
+  return Object.entries(grouped)
+    .map(([year, rows]) => {
+      const row = rows.find((item) => item.day_index === dayIndex);
+      if (!row || row[field] === null || row[field] === undefined) return null;
+      return { year: Number(year), row, value: row[field], formatted: valueText(row[field], "--", formatter) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.year - a.year);
+}
+
+function drawHoverLayer({ svg, tooltip, grouped, field, formatter, xScale, yScale, margin, chartW, chartH }) {
+  const hoverGroup = svgEl("g", { class: "hover-layer", opacity: "0" });
+  const hoverLine = svgEl("line", {
+    y1: margin.top,
+    y2: margin.top + chartH,
+    class: "hover-line",
+  });
+  hoverGroup.appendChild(hoverLine);
+  svg.appendChild(hoverGroup);
+
+  const overlay = svgEl("rect", {
+    x: margin.left,
+    y: margin.top,
+    width: chartW,
+    height: chartH,
+    fill: "transparent",
+    class: "hover-overlay",
+  });
+  svg.appendChild(overlay);
+
+  const showTooltip = (event) => {
+    const bounds = svg.getBoundingClientRect();
+    const viewX = ((event.clientX - bounds.left) / bounds.width) * 960;
+    const dayIndex = Math.max(1, Math.min(365, Math.round(((viewX - margin.left) / chartW) * 364 + 1)));
+    const rows = tooltipRows(grouped, dayIndex, field, formatter);
+    if (rows.length === 0) {
+      hoverGroup.setAttribute("opacity", "0");
+      tooltip.hidden = true;
+      return;
+    }
+
+    clear(hoverGroup);
+    const x = xScale(dayIndex);
+    hoverGroup.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: margin.top + chartH, class: "hover-line" }));
+    rows.forEach(({ year, value }) => {
+      hoverGroup.appendChild(
+        svgEl("circle", {
+          cx: x,
+          cy: yScale(value),
+          r: year === trackerData.current_year ? 4.8 : 3.8,
+          fill: colorForYear(year),
+          stroke: "#fff",
+          "stroke-width": 1.4,
+        }),
+      );
+    });
+    hoverGroup.setAttribute("opacity", "1");
+
+    const title = rows[0].row.month_day;
+    tooltip.innerHTML = [
+      `<strong>${title}</strong>`,
+      ...rows.map(
+        ({ year, formatted, row }) =>
+          `<span><i style="background:${colorForYear(year)}"></i>${year}: ${formatted}<small>${valueText(row.cases)} cases</small></span>`,
+      ),
+    ].join("");
+
+    const frameBounds = svg.closest(".chart-frame").getBoundingClientRect();
+    const left = Math.min(frameBounds.width - 190, Math.max(8, event.clientX - frameBounds.left + 12));
+    const top = Math.min(frameBounds.height - 90, Math.max(8, event.clientY - frameBounds.top + 12));
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.hidden = false;
+  };
+
+  overlay.addEventListener("mousemove", showTooltip);
+  overlay.addEventListener("mouseleave", () => {
+    hoverGroup.setAttribute("opacity", "0");
+    tooltip.hidden = true;
+  });
+}
+
 function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands = false }) {
   const svg = byId(svgId);
   clear(svg);
+  const tooltip = ensureTooltip(svg);
   const width = 960;
   const height = 380;
   const margin = { top: 20, right: 24, bottom: 46, left: 54 };
@@ -136,12 +301,12 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
 
   let yMin = minY ?? Math.min(...values, 0);
-  let yMax = Math.max(...values, riskBands ? 1.4 : 1);
+  let yMax = Math.max(...values, riskBands ? 1.6 : 1);
   if (!Number.isFinite(yMin)) yMin = 0;
   if (!Number.isFinite(yMax)) yMax = 1;
   if (riskBands) {
-    yMin = Math.min(yMin, -1.2);
-    yMax = Math.max(yMax, 1.8);
+    yMin = Math.min(yMin, -1);
+    yMax = Math.max(yMax, 1.75);
   }
 
   const yTicks = niceTicks(yMin, yMax, 6);
@@ -152,13 +317,7 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   const yScale = (value) => margin.top + (1 - (value - yMin) / (yMax - yMin)) * chartH;
 
   if (riskBands) {
-    const bands = [
-      { from: Math.max(1, yMin), to: yMax, color: "rgba(183,54,44,0.13)", label: "Elevated" },
-      { from: Math.max(0, yMin), to: Math.min(1, yMax), color: "rgba(178,122,5,0.14)", label: "Moderate" },
-      { from: yMin, to: Math.min(0, yMax), color: "rgba(35,122,87,0.13)", label: "Low" },
-    ];
-    bands.forEach((band) => {
-      if (band.to <= band.from) return;
+    riskBandRanges(data, yMin, yMax).forEach((band) => {
       svg.appendChild(
         svgEl("rect", {
           x: margin.left,
@@ -170,8 +329,8 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
       );
       svg.appendChild(
         svgEl("text", {
-          x: width - margin.right - 84,
-          y: yScale((band.from + band.to) / 2),
+          x: width - margin.right - 98,
+          y: yScale((band.from + band.to) / 2) + 4,
           class: "band-label",
         }),
       ).textContent = band.label;
@@ -226,20 +385,32 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
   }
 
+  drawHoverLayer({
+    svg,
+    tooltip,
+    grouped,
+    field,
+    formatter: field === "risk_index" ? precise : compact,
+    xScale,
+    yScale,
+    margin,
+    chartW,
+    chartH,
+  });
   drawLegend(legendId, years, data.current_year);
 }
 
 function renderSummary(data) {
   const band = data.summary.risk_band || "Unknown";
   byId("riskBand").textContent = band;
-  byId("riskIndex").textContent = valueText(data.summary.risk_index);
+  byId("riskIndex").textContent = valueText(data.summary.risk_index, "--", precise);
   byId("last28").textContent = valueText(data.summary.cases_last_28_days);
   byId("latestDate").textContent = fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`));
   byId("generatedAt").textContent = `Generated ${fmt.format(new Date(data.generated_at))}`;
 
   const status = document.querySelector(".metric-status");
-  status.classList.remove("low", "moderate", "elevated");
-  status.classList.add(band.toLowerCase());
+  status.classList.remove("very-low", "low", "moderate", "moderate-high", "high", "unknown");
+  status.classList.add(classNameForBand(band));
 
   const sourceList = byId("sourceList");
   clear(sourceList);
@@ -256,7 +427,8 @@ function renderSummary(data) {
 
 function render() {
   if (!trackerData) return;
-  const years = yearsForMode(trackerData, byId("yearMode").value);
+  const years = [...selectedYears].sort((a, b) => a - b);
+  setupYearControls(trackerData);
   drawChart({
     svgId: "riskChart",
     legendId: "riskLegend",
@@ -284,6 +456,7 @@ fetch("data/risk_data.json", { cache: "no-store" })
   })
   .then((data) => {
     trackerData = data;
+    selectedYears = new Set(defaultYears(data));
     renderSummary(data);
     render();
   })
@@ -295,5 +468,4 @@ fetch("data/risk_data.json", { cache: "no-store" })
     console.error(error);
   });
 
-byId("yearMode").addEventListener("change", render);
 window.addEventListener("resize", render);

@@ -20,6 +20,7 @@ The original Colab notebook mixed data discovery, source fetching, transformatio
 - `src/mpox_tracker/model.py` standardizes case data and computes the risk indicator.
 - `site/` contains a static dashboard that reads `site/data/risk_data.json`.
 - `.github/workflows/update-and-deploy.yml` runs tests, rebuilds data, and deploys to GitHub Pages daily.
+- The dashboard includes a resource section linking to queer-positive and public health mpox information.
 
 ## Data Sources
 
@@ -34,15 +35,20 @@ The tracker:
 
 1. Loads daily 2022 cases, historical daily cases for later baseline years, and the current weekly case chart.
 2. Converts weekly case totals into daily-equivalent values across the reporting week.
-3. Smooths daily-equivalent cases with a 14-day Gaussian window.
-4. Computes the day-to-day change in smoothed log cases.
+3. Smooths the continuous daily-equivalent case series with a 14-day Gaussian window.
+4. Computes the day-to-day change in smoothed log cases on the continuous series.
 5. Normalizes that change by `0.04` to produce the spread risk index.
+6. Aligns years by month and day for charting.
+
+January 2024 risk-index values are published as `null`. The source data do not show a single bad record, but the indicator is unusually sensitive in that low-count period, so the display suppresses that month conservatively.
 
 Bands:
 
-- `< 0`: Low, reported cases are declining after smoothing.
-- `0 to < 1`: Moderate, reported cases are flat to gradually increasing.
-- `>= 1`: Elevated, reported cases are accelerating.
+- `< 0`: Very Low
+- `0 to < 0.5`: Low
+- `0.5 to < 1.0`: Moderate
+- `1.0 to < 1.5`: Moderate-High
+- `>= 1.5`: High
 
 This is for situational awareness and should not be treated as clinical or individual medical guidance.
 
