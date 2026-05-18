@@ -11,6 +11,7 @@ Recommended URL pattern:
 - `https://donnellymjd.github.io/mpox-risk-tracker/` for the default Pages URL.
 - Optional: `https://mpox.d2sci.co/` as a custom GitHub Pages subdomain.
 - In Figma Sites, add the Pages URL as a webpage/embed block or iframe-style custom code.
+- Use `https://donnellymjd.github.io/mpox-risk-tracker/embed-card.html` for a compact preview card in the D2Sci site.
 
 ## What This Replaces
 
@@ -21,6 +22,7 @@ The original Colab notebook mixed data discovery, source fetching, transformatio
 - `site/` contains a static dashboard that reads `site/data/risk_data.json`.
 - `.github/workflows/update-and-deploy.yml` runs tests, rebuilds data, and deploys to GitHub Pages daily.
 - The dashboard includes a resource section linking to queer-positive and public health mpox information.
+- `site/data/summary.json` and `site/embed-card.html` provide a lightweight D2Sci preview for the Figma site.
 
 ## Data Sources
 
@@ -78,3 +80,5 @@ The workflow also runs every day at `10:23 UTC`.
 ## Optional Custom Subdomain
 
 To serve this from `mpox.d2sci.co`, configure GitHub Pages for that custom domain and add the DNS record requested by GitHub. Keep the apex `d2sci.co` pointed at Figma Sites.
+
+Do not add a `site/CNAME` file until DNS for `mpox.d2sci.co` is configured and verified in GitHub Pages.

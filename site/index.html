@@ -5,20 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Unofficial NYC mpox spread risk indicator built from public NYC Health case data."
+      content="D2Sci public analytics tracker for an unofficial NYC mpox spread risk indicator built from public NYC Health case data."
     />
-    <title>NYC Mpox Spread Risk Tracker</title>
+    <meta property="og:title" content="D2Sci NYC Mpox Spread Risk Tracker" />
+    <meta
+      property="og:description"
+      content="A reproducible public health analytics tool from D2Sci, refreshed from public NYC Health case data."
+    />
+    <title>D2Sci | NYC Mpox Spread Risk Tracker</title>
     <link rel="stylesheet" href="assets/styles.css" />
   </head>
-  <body>
-    <header class="site-header">
-      <div>
-        <p class="eyebrow">d2sci public health tracker</p>
-        <h1>NYC Mpox Spread Risk</h1>
-      </div>
-      <a class="source-link" href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">
-        NYC Health data
-      </a>
+  <body id="top">
+    <header class="brand-header">
+      <nav class="brand-nav" aria-label="D2Sci tracker navigation">
+        <a class="brand-mark" href="https://www.d2sci.co/">D²Sci</a>
+        <div class="nav-links">
+          <a href="#indicator">Indicator</a>
+          <a href="#method">Method</a>
+          <a href="#resources">Resources</a>
+          <a href="https://www.d2sci.co/">D2Sci.co</a>
+        </div>
+      </nav>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Public Analytics / Health Signal Monitoring</p>
+          <h1>NYC Mpox Spread Risk Tracker</h1>
+          <p>
+            A reproducible D2Sci public health analytics tool that turns public NYC Health
+            case data into a regularly refreshed situational-awareness signal.
+          </p>
+        </div>
+        <div class="hero-actions" aria-label="Primary links">
+          <a class="button button-primary" href="#indicator">View Indicator</a>
+          <a class="button button-secondary" href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">
+            NYC Health Data
+          </a>
+        </div>
+      </section>
     </header>
 
     <main>
@@ -41,7 +64,7 @@
         </div>
       </section>
 
-      <section class="chart-section">
+      <section id="indicator" class="chart-section">
         <div class="section-heading">
           <div>
             <h2>Spread Risk Indicator</h2>
@@ -68,7 +91,7 @@
         <div id="caseLegend" class="legend" aria-label="Cumulative chart legend"></div>
       </section>
 
-      <section class="method-section">
+      <section id="method" class="method-section">
         <h2>Method</h2>
         <p>
           This unofficial tracker fetches public NYC Health mpox case data, smooths daily-equivalent
@@ -83,7 +106,7 @@
         <dl id="sourceList" class="source-list"></dl>
       </section>
 
-      <section class="resources-section">
+      <section id="resources" class="resources-section">
         <div class="section-heading">
           <div>
             <h2>Mpox Health Resources</h2>
@@ -116,7 +139,7 @@
     </main>
 
     <footer>
-      <span>Analysis by @donnellymjd.bsky.social</span>
+      <span><a href="https://www.d2sci.co/">D2Sci</a> public analytics</span>
       <span id="generatedAt">Generated --</span>
     </footer>
 

@@ -260,6 +260,20 @@ def write_outputs(result: BuildResult, output_dir: Path) -> None:
         encoding="utf-8",
     )
 
+    summary_payload = {
+        "title": "NYC Mpox Spread Risk Tracker",
+        "description": "A D2Sci public analytics tracker refreshed from public NYC Health case data.",
+        "url": "https://donnellymjd.github.io/mpox-risk-tracker/",
+        "generated_at": result.payload["generated_at"],
+        "latest_data_date": result.payload["latest_data_date"],
+        "summary": result.payload["summary"],
+        "sources": result.payload["sources"],
+    }
+    (data_dir / "summary.json").write_text(
+        json.dumps(summary_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     cases_csv = result.cases[["date", "cases", "source"]].copy()
     cases_csv["date"] = cases_csv["date"].dt.strftime("%Y-%m-%d")
     cases_csv.to_csv(data_dir / "cases.csv", index=False)
