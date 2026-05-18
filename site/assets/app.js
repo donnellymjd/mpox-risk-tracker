@@ -1,18 +1,18 @@
 const palette = {
-  2022: "#4f6f52",
-  2023: "#7c4d1d",
-  2024: "#5f5a8f",
-  2025: "#146c94",
-  2026: "#b7362c",
-  2027: "#237a57",
+  2022: "#1e4976",
+  2023: "#e8833a",
+  2024: "#009e73",
+  2025: "#6f4aa0",
+  2026: "#d55e00",
+  2027: "#0072b2",
 };
 
 const riskBandColors = {
-  "Very Low": "rgba(35,122,87,0.11)",
-  Low: "rgba(88,145,84,0.12)",
-  Moderate: "rgba(178,122,5,0.14)",
-  "Moderate-High": "rgba(191,94,45,0.13)",
-  High: "rgba(183,54,44,0.14)",
+  "Very Low": "#e6f0f5",
+  Low: "#d8e8df",
+  Moderate: "#fff0bf",
+  "Moderate-High": "#fbd1a7",
+  High: "#f3b7b2",
 };
 
 const monthTicks = [
@@ -187,6 +187,21 @@ function riskBandRanges(data, yMin, yMax) {
     }));
 }
 
+function clientPointToSvg(svg, event) {
+  const transform = svg.getScreenCTM();
+  if (!transform) {
+    const bounds = svg.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * 960,
+      y: ((event.clientY - bounds.top) / bounds.height) * 380,
+    };
+  }
+  const point = svg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  return point.matrixTransform(transform.inverse());
+}
+
 function ensureTooltip(svg) {
   const frame = svg.closest(".chart-frame");
   let tooltip = frame.querySelector(".chart-tooltip");
@@ -232,8 +247,8 @@ function drawHoverLayer({ svg, tooltip, grouped, field, formatter, xScale, yScal
   svg.appendChild(overlay);
 
   const showTooltip = (event) => {
-    const bounds = svg.getBoundingClientRect();
-    const viewX = ((event.clientX - bounds.left) / bounds.width) * 960;
+    const svgPoint = clientPointToSvg(svg, event);
+    const viewX = svgPoint.x;
     const dayIndex = Math.max(1, Math.min(365, Math.round(((viewX - margin.left) / chartW) * 364 + 1)));
     const rows = tooltipRows(grouped, dayIndex, field, formatter);
     if (rows.length === 0) {
@@ -325,6 +340,7 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
           width: chartW,
           height: yScale(band.from) - yScale(band.to),
           fill: band.color,
+          class: "risk-band",
         }),
       );
       svg.appendChild(
@@ -383,6 +399,27 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   if (latest && years.includes(data.current_year)) {
     const x = xScale(latest.day_index);
     svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
+
+    const labelText = `Latest data ${latest.month_day}`;
+    const labelX = Math.min(width - margin.right - 118, Math.max(margin.left + 8, x + 8));
+    const labelY = margin.top + 16;
+    svg.appendChild(
+      svgEl("rect", {
+        x: labelX - 6,
+        y: labelY - 13,
+        width: 116,
+        height: 20,
+        rx: 4,
+        class: "current-marker-label-bg",
+      }),
+    );
+    const currentLabel = svgEl("text", {
+      x: labelX,
+      y: labelY + 1,
+      class: "current-marker-label",
+    });
+    currentLabel.textContent = labelText;
+    svg.appendChild(currentLabel);
   }
 
   drawHoverLayer({

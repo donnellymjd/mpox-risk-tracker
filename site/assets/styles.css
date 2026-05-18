@@ -350,14 +350,33 @@ svg {
 
 .current-marker {
   stroke: var(--brand-navy);
-  stroke-dasharray: 4 5;
-  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  stroke-width: 1.8;
+}
+
+.current-marker-label-bg {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: rgba(30, 73, 118, 0.18);
+  pointer-events: none;
+}
+
+.current-marker-label {
+  fill: var(--brand-navy);
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.risk-band {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 1;
 }
 
 .band-label {
-  fill: rgba(21, 51, 79, 0.68);
+  fill: rgba(21, 51, 79, 0.78);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   pointer-events: none;
 }
 
