@@ -16,11 +16,41 @@ YEAR_COLORS = {
 }
 
 RISK_BANDS = [
-    {"label": "Very Low", "min": None, "max": 0.0, "color": "#e6f0f5"},
-    {"label": "Low", "min": 0.0, "max": 0.5, "color": "#d8e8df"},
-    {"label": "Moderate", "min": 0.5, "max": 1.0, "color": "#fff0bf"},
-    {"label": "Moderate-High", "min": 1.0, "max": 1.5, "color": "#fbd1a7"},
-    {"label": "High", "min": 1.5, "max": None, "color": "#f3b7b2"},
+    {
+        "label": "Very Low",
+        "min": None,
+        "max": 0.0,
+        "color": "#e6f0f5",
+        "textColor": "#1e4976",
+    },
+    {
+        "label": "Low",
+        "min": 0.0,
+        "max": 0.5,
+        "color": "#d8e8df",
+        "textColor": "#256d4a",
+    },
+    {
+        "label": "Moderate",
+        "min": 0.5,
+        "max": 1.0,
+        "color": "#fff0bf",
+        "textColor": "#8a6300",
+    },
+    {
+        "label": "Moderate-High",
+        "min": 1.0,
+        "max": 1.5,
+        "color": "#fbd1a7",
+        "textColor": "#a04a14",
+    },
+    {
+        "label": "High",
+        "min": 1.5,
+        "max": None,
+        "color": "#f3b7b2",
+        "textColor": "#9a2f29",
+    },
 ]
 
 

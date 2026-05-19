@@ -8,11 +8,11 @@ const DEFAULT_STYLING = {
     "2027": "#0072b2",
   },
   riskBands: [
-    { label: "Very Low", min: null, max: 0.0, color: "#e6f0f5" },
-    { label: "Low", min: 0.0, max: 0.5, color: "#d8e8df" },
-    { label: "Moderate", min: 0.5, max: 1.0, color: "#fff0bf" },
-    { label: "Moderate-High", min: 1.0, max: 1.5, color: "#fbd1a7" },
-    { label: "High", min: 1.5, max: null, color: "#f3b7b2" },
+    { label: "Very Low", min: null, max: 0.0, color: "#e6f0f5", textColor: "#1e4976" },
+    { label: "Low", min: 0.0, max: 0.5, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Moderate", min: 0.5, max: 1.0, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Moderate-High", min: 1.0, max: 1.5, color: "#fbd1a7", textColor: "#a04a14" },
+    { label: "High", min: 1.5, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
   ],
   version: 1,
 };
@@ -90,6 +90,10 @@ function isNullableNumber(value) {
   return value === null || (typeof value === "number" && Number.isFinite(value));
 }
 
+function defaultRiskBandTextColor(label) {
+  return DEFAULT_STYLING.riskBands.find((band) => band.label === label)?.textColor || "#475569";
+}
+
 function validateStyling(styling) {
   if (!isPlainObject(styling) || !isPlainObject(styling.yearColors) || !Array.isArray(styling.riskBands)) {
     return null;
@@ -117,11 +121,16 @@ function validateStyling(styling) {
     ) {
       return null;
     }
+    const textColor = "textColor" in band ? band.textColor : defaultRiskBandTextColor(band.label);
+    if (!isHexColor(textColor)) {
+      return null;
+    }
     return {
       label: band.label,
       min: band.min,
       max: band.max,
       color: band.color,
+      textColor,
     };
   });
 

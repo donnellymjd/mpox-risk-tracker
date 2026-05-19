@@ -142,7 +142,9 @@ def test_payload_exports_chart_styling_contract() -> None:
         "min": None,
         "max": 0.0,
         "color": "#e6f0f5",
+        "textColor": "#1e4976",
     }
+    assert payload["styling"]["riskBands"][1]["textColor"] == "#256d4a"
     assert payload["parameters"]["risk_bands"][0] == {
         "label": "Very Low",
         "min": None,

@@ -39,21 +39,13 @@ const DEFAULT_STYLING: TrackerStyling = {
     "2027": "#0072b2",
   },
   riskBands: [
-    { label: "Very Low", min: null, max: 0.0, color: "#e6f0f5" },
-    { label: "Low", min: 0.0, max: 0.5, color: "#d8e8df" },
-    { label: "Moderate", min: 0.5, max: 1.0, color: "#fff0bf" },
-    { label: "Moderate-High", min: 1.0, max: 1.5, color: "#fbd1a7" },
-    { label: "High", min: 1.5, max: null, color: "#f3b7b2" },
+    { label: "Very Low", min: null, max: 0.0, color: "#e6f0f5", textColor: "#1e4976" },
+    { label: "Low", min: 0.0, max: 0.5, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Moderate", min: 0.5, max: 1.0, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Moderate-High", min: 1.0, max: 1.5, color: "#fbd1a7", textColor: "#a04a14" },
+    { label: "High", min: 1.5, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
   ],
   version: 1,
-};
-
-const BAND_TEXT: Record<string, string> = {
-  "Very Low": "#1e4976",
-  Low: "#256d4a",
-  Moderate: "#8a6300",
-  "Moderate-High": "#a04a14",
-  High: "#9a2f29",
 };
 
 const MONTHS = [
@@ -92,11 +84,14 @@ interface RiskBand {
   min: number | null;
   max: number | null;
   color?: string;
+  textColor?: string;
 }
+
+type StyledRiskBand = RiskBand & { color: string; textColor: string };
 
 interface TrackerStyling {
   yearColors: Record<string, string>;
-  riskBands: Required<RiskBand>[];
+  riskBands: StyledRiskBand[];
   version: number;
 }
 
@@ -160,6 +155,13 @@ function isNullableNumber(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value));
 }
 
+function defaultRiskBandTextColor(label: string) {
+  return (
+    DEFAULT_STYLING.riskBands.find((band) => band.label === label)?.textColor ||
+    "#475569"
+  );
+}
+
 function validateStyling(styling: unknown): TrackerStyling | null {
   if (
     !isPlainObject(styling) ||
@@ -191,11 +193,17 @@ function validateStyling(styling: unknown): TrackerStyling | null {
     ) {
       return null;
     }
+    const textColor =
+      "textColor" in band ? band.textColor : defaultRiskBandTextColor(band.label);
+    if (!isHexColor(textColor)) {
+      return null;
+    }
     return {
       label: band.label,
       min: band.min,
       max: band.max,
       color: band.color,
+      textColor,
     };
   });
 
@@ -203,7 +211,7 @@ function validateStyling(styling: unknown): TrackerStyling | null {
 
   return {
     yearColors,
-    riskBands: riskBands as Required<RiskBand>[],
+    riskBands: riskBands as StyledRiskBand[],
     version:
       typeof styling.version === "number" && Number.isInteger(styling.version)
         ? styling.version
@@ -655,9 +663,11 @@ export function PublicAnalyticsPage() {
   };
 
   const band = data?.summary.risk_band || (error ? "Unavailable" : "Loading");
-  const bandColor =
-    styling.riskBands.find((riskBand) => riskBand.label === band)?.color || "#e5e7eb";
-  const bandText = BAND_TEXT[band] || "#475569";
+  const currentRiskBand = styling.riskBands.find(
+    (riskBand) => riskBand.label === band,
+  );
+  const bandColor = currentRiskBand?.color || "#e5e7eb";
+  const bandText = currentRiskBand?.textColor || "#475569";
 
   const cards = [
     {
@@ -835,7 +845,7 @@ export function PublicAnalyticsPage() {
                         className="text-xs px-2 py-1 rounded-md border"
                         style={{
                           background: b.color,
-                          color: BAND_TEXT[b.label] || "#475569",
+                          color: b.textColor || "#475569",
                           borderColor: "rgba(0,0,0,0.06)",
                         }}
                       >
