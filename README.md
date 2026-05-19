@@ -157,7 +157,7 @@ Do not use the tracker to determine whether a specific person should seek vaccin
 
 The build process writes these public artifacts:
 
-- `site/data/risk_data.json`: full dashboard payload, including series values, parameters, source metadata, and notes.
+- `site/data/risk_data.json`: full dashboard payload, including series values, parameters, chart color styling, source metadata, and notes.
 - `site/data/summary.json`: compact latest-status summary used by lightweight previews.
 - `site/data/cases.csv`: standardized daily case series used by the dashboard.
 - `site/index.html`: full interactive dashboard.
@@ -188,6 +188,7 @@ Scheduled build:
 
 ```text
 src/mpox_tracker/sources.py   Fetches NYC Health and Datawrapper sources
+src/mpox_tracker/styling.py   Defines exported chart colors and styling contract
 src/mpox_tracker/model.py     Standardizes data and computes the indicator
 src/mpox_tracker/build.py     Command-line build entry point
 site/                         Static dashboard files

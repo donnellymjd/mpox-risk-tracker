@@ -10,11 +10,15 @@ to the D2Sci Figma Make project.
 
 ## Files to add
 
-Add `PublicAnalyticsPage.tsx` to:
+Replace `PublicAnalyticsPage.tsx` with the version in this folder:
 
 ```text
 src/app/components/PublicAnalyticsPage.tsx
 ```
+
+This version fetches `risk_data.json`, validates `data.styling`, falls back to
+the previous hardcoded colors if the styling block is missing or malformed, and
+uses the JSON values for Recharts lines and risk-band fills.
 
 ## Route update
 
@@ -142,3 +146,6 @@ In `src/app/components/Root.tsx`, add a footer link under `Company`:
 
 After these edits are applied inside Figma Make, publish the Figma Sites project
 so `d2sci.co/analytics` becomes live.
+
+The Figma MCP can currently read Figma Make source, but cannot write Make files
+directly. Apply this file through Figma Make's AI editor or source editor.

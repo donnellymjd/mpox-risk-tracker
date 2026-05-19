@@ -449,6 +449,24 @@ svg {
   pointer-events: none;
 }
 
+.chart-watermark {
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.chart-watermark-logo {
+  fill: var(--brand-navy);
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.chart-watermark-note {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .chart-tooltip {
   position: absolute;
   z-index: 3;

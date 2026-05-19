@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from mpox_tracker.model import (
+    build_payload,
     build_seasonal,
     clean_daily_cases,
     combine_cases,
@@ -10,6 +11,7 @@ from mpox_tracker.model import (
     gaussian_rolling_mean,
     _risk_band,
 )
+from mpox_tracker.styling import export_styling
 
 
 def test_expand_weekly_cases_does_not_cross_year_boundary() -> None:
@@ -117,3 +119,32 @@ def test_risk_band_thresholds() -> None:
     assert _risk_band(0.7) == "Moderate"
     assert _risk_band(1.2) == "Moderate-High"
     assert _risk_band(1.6) == "High"
+
+
+def test_payload_exports_chart_styling_contract() -> None:
+    cases = pd.DataFrame(
+        {
+            "date": pd.date_range("2026-05-18", periods=3, freq="D"),
+            "cases": [1.0, 2.0, 3.0],
+            "source": ["test"] * 3,
+        }
+    )
+    cases["year"] = cases["date"].dt.year
+    seasonal = build_seasonal(cases)
+
+    payload = build_payload(cases, seasonal, sources=[])
+
+    assert payload["styling"] == export_styling()
+    assert payload["styling"]["version"] == 1
+    assert payload["styling"]["yearColors"]["2026"] == "#d55e00"
+    assert payload["styling"]["riskBands"][0] == {
+        "label": "Very Low",
+        "min": None,
+        "max": 0.0,
+        "color": "#e6f0f5",
+    }
+    assert payload["parameters"]["risk_bands"][0] == {
+        "label": "Very Low",
+        "min": None,
+        "max": 0.0,
+    }

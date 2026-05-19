@@ -1,18 +1,20 @@
-const palette = {
-  2022: "#1e4976",
-  2023: "#e8833a",
-  2024: "#009e73",
-  2025: "#6f4aa0",
-  2026: "#d55e00",
-  2027: "#0072b2",
-};
-
-const riskBandColors = {
-  "Very Low": "#e6f0f5",
-  Low: "#d8e8df",
-  Moderate: "#fff0bf",
-  "Moderate-High": "#fbd1a7",
-  High: "#f3b7b2",
+const DEFAULT_STYLING = {
+  yearColors: {
+    "2022": "#1e4976",
+    "2023": "#e8833a",
+    "2024": "#009e73",
+    "2025": "#6f4aa0",
+    "2026": "#d55e00",
+    "2027": "#0072b2",
+  },
+  riskBands: [
+    { label: "Very Low", min: null, max: 0.0, color: "#e6f0f5" },
+    { label: "Low", min: 0.0, max: 0.5, color: "#d8e8df" },
+    { label: "Moderate", min: 0.5, max: 1.0, color: "#fff0bf" },
+    { label: "Moderate-High", min: 1.0, max: 1.5, color: "#fbd1a7" },
+    { label: "High", min: 1.5, max: null, color: "#f3b7b2" },
+  ],
+  version: 1,
 };
 
 const monthTicks = [
@@ -46,7 +48,7 @@ const monthOptions = [
 ];
 
 const firstVisibleDayByYear = {
-  2022: 121,
+  2022: 138,
 };
 
 const fmt = new Intl.DateTimeFormat("en-US", {
@@ -66,6 +68,7 @@ const precise = new Intl.NumberFormat("en-US", {
 let trackerData = null;
 let selectedYears = new Set();
 let selectedMonthRange = { startMonthIndex: 0, endMonthIndex: monthOptions.length - 1 };
+let activeStyling = DEFAULT_STYLING;
 
 function byId(id) {
   return document.getElementById(id);
@@ -75,8 +78,78 @@ function valueText(value, fallback = "--", formatter = compact) {
   return value === null || value === undefined ? fallback : formatter.format(value);
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isHexColor(value) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function isNullableNumber(value) {
+  return value === null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function validateStyling(styling) {
+  if (!isPlainObject(styling) || !isPlainObject(styling.yearColors) || !Array.isArray(styling.riskBands)) {
+    return null;
+  }
+
+  const yearColors = {};
+  for (const [year, color] of Object.entries(styling.yearColors)) {
+    if (!/^\d{4}$/.test(year) || !isHexColor(color)) return null;
+    yearColors[year] = color;
+  }
+
+  if (Object.keys(yearColors).length === 0 || styling.riskBands.length === 0) {
+    return null;
+  }
+
+  const riskBands = styling.riskBands.map((band) => {
+    if (
+      !isPlainObject(band) ||
+      typeof band.label !== "string" ||
+      !("min" in band) ||
+      !("max" in band) ||
+      !isNullableNumber(band.min) ||
+      !isNullableNumber(band.max) ||
+      !isHexColor(band.color)
+    ) {
+      return null;
+    }
+    return {
+      label: band.label,
+      min: band.min,
+      max: band.max,
+      color: band.color,
+    };
+  });
+
+  if (riskBands.some((band) => band === null)) return null;
+
+  return {
+    yearColors,
+    riskBands,
+    version: Number.isInteger(styling.version) ? styling.version : DEFAULT_STYLING.version,
+  };
+}
+
+function resolveStyling(data) {
+  if (!data.styling) {
+    console.warn("risk_data.json is missing styling; using built-in chart defaults.");
+    return DEFAULT_STYLING;
+  }
+
+  const styling = validateStyling(data.styling);
+  if (!styling) {
+    console.warn("risk_data.json styling is malformed; using built-in chart defaults.");
+    return DEFAULT_STYLING;
+  }
+  return styling;
+}
+
 function colorForYear(year) {
-  return palette[year] || "#2f665f";
+  return activeStyling.yearColors[String(year)] || "#2f665f";
 }
 
 function classNameForBand(label) {
@@ -91,7 +164,24 @@ function availableYears(data) {
 }
 
 function defaultYears(data) {
-  return availableYears(data).slice(-3);
+  const years = availableYears(data);
+  const wanted = [2022, data.current_year - 1, data.current_year];
+  const defaults = wanted.filter((year, index) => wanted.indexOf(year) === index && years.includes(year));
+  return defaults.length > 0 ? defaults : years.slice(-3);
+}
+
+function monthIndexFromDate(isoDate) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return new Date().getUTCMonth();
+  return date.getUTCMonth();
+}
+
+function defaultMonthRange(data) {
+  const monthIndex = monthIndexFromDate(data.latest_data_date);
+  return {
+    startMonthIndex: Math.max(0, monthIndex - 1),
+    endMonthIndex: Math.min(monthOptions.length - 1, monthIndex + 1),
+  };
 }
 
 function visibleDayRange() {
@@ -265,13 +355,12 @@ function setupMonthControls() {
 }
 
 function riskBandRanges(data, yMin, yMax) {
-  const bands = data.parameters?.risk_bands || [];
-  return bands
+  return activeStyling.riskBands
     .map((band) => ({
       label: band.label,
       from: band.min === null || band.min === undefined ? yMin : band.min,
       to: band.max === null || band.max === undefined ? yMax : band.max,
-      color: riskBandColors[band.label] || "rgba(83,98,91,0.1)",
+      color: band.color,
     }))
     .filter((band) => band.to > yMin && band.from < yMax)
     .map((band) => ({
@@ -406,6 +495,29 @@ function drawHoverLayer({
     hoverGroup.setAttribute("opacity", "0");
     tooltip.hidden = true;
   });
+}
+
+function drawChartWatermark(svg, width, height, margin) {
+  const group = svgEl("g", {
+    class: "chart-watermark",
+    transform: `translate(${width - margin.right - 154} ${height - 8})`,
+  });
+  const brand = svgEl("text", {
+    x: 0,
+    y: 0,
+    class: "chart-watermark-logo",
+  });
+  brand.textContent = "D²Sci";
+
+  const note = svgEl("text", {
+    x: 42,
+    y: 0,
+    class: "chart-watermark-note",
+  });
+  note.textContent = "© D²Sci public analytics";
+
+  group.append(brand, note);
+  svg.appendChild(group);
 }
 
 function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands = false }) {
@@ -550,6 +662,7 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     chartH,
     dayRange,
   });
+  drawChartWatermark(svg, width, height, margin);
   drawLegend(legendId, years, data.current_year);
 }
 
@@ -610,7 +723,9 @@ fetch("data/risk_data.json", { cache: "no-store" })
   })
   .then((data) => {
     trackerData = data;
+    activeStyling = resolveStyling(data);
     selectedYears = new Set(defaultYears(data));
+    selectedMonthRange = defaultMonthRange(data);
     renderSummary(data);
     render();
   })

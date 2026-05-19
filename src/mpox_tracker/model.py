@@ -13,15 +13,10 @@ import pandas as pd
 
 from . import config
 from .sources import SourceMetadata
+from . import styling
 
 
-RISK_BANDS = [
-    {"label": "Very Low", "min": None, "max": 0.0},
-    {"label": "Low", "min": 0.0, "max": 0.5},
-    {"label": "Moderate", "min": 0.5, "max": 1.0},
-    {"label": "Moderate-High", "min": 1.0, "max": 1.5},
-    {"label": "High", "min": 1.5, "max": None},
-]
+RISK_BANDS = styling.indicator_risk_bands()
 
 
 @dataclass(frozen=True)
@@ -168,15 +163,14 @@ def _json_number(value: object) -> float | int | None:
 def _risk_band(value: float | None) -> str:
     if value is None:
         return "Unknown"
-    if value < 0:
-        return "Very Low"
-    if value < 0.5:
-        return "Low"
-    if value < 1.0:
-        return "Moderate"
-    if value < 1.5:
-        return "Moderate-High"
-    return "High"
+    for band in RISK_BANDS:
+        min_value = band["min"]
+        max_value = band["max"]
+        above_min = min_value is None or value >= float(min_value)
+        below_max = max_value is None or value < float(max_value)
+        if above_min and below_max:
+            return str(band["label"])
+    return "Unknown"
 
 
 def build_payload(
@@ -220,6 +214,7 @@ def build_payload(
         "generated_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "latest_data_date": latest_date.strftime("%Y-%m-%d"),
         "current_year": current_year,
+        "styling": styling.export_styling(),
         "summary": {
             "risk_index": latest_risk,
             "risk_band": _risk_band(latest_risk if isinstance(latest_risk, float) else None),
