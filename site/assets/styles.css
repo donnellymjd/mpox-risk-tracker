@@ -277,6 +277,12 @@ main {
   gap: 8px;
 }
 
+.chart-controls {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
 .year-toggle {
   display: inline-flex;
   min-height: 34px;
@@ -311,6 +317,54 @@ main {
   width: 16px;
   height: 3px;
   border-radius: 999px;
+}
+
+.month-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  color: var(--muted);
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.month-controls-label {
+  color: var(--brand-navy);
+}
+
+.month-controls select,
+.month-reset {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font-heading);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.month-controls select {
+  padding: 0 26px 0 9px;
+}
+
+.month-reset {
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.month-reset:hover:not(:disabled) {
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
+}
+
+.month-reset:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.58;
 }
 
 .chart-frame {
@@ -667,6 +721,16 @@ footer a {
   }
 
   .year-controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .chart-controls {
+    width: 100%;
+    justify-items: start;
+  }
+
+  .month-controls {
     width: 100%;
     justify-content: flex-start;
   }

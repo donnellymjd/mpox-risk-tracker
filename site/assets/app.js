@@ -30,6 +30,25 @@ const monthTicks = [
   ["Dec", 335],
 ];
 
+const monthOptions = [
+  { label: "Jan", start: 1, end: 31 },
+  { label: "Feb", start: 32, end: 59 },
+  { label: "Mar", start: 60, end: 90 },
+  { label: "Apr", start: 91, end: 120 },
+  { label: "May", start: 121, end: 151 },
+  { label: "Jun", start: 152, end: 181 },
+  { label: "Jul", start: 182, end: 212 },
+  { label: "Aug", start: 213, end: 243 },
+  { label: "Sep", start: 244, end: 273 },
+  { label: "Oct", start: 274, end: 304 },
+  { label: "Nov", start: 305, end: 334 },
+  { label: "Dec", start: 335, end: 365 },
+];
+
+const firstVisibleDayByYear = {
+  2022: 121,
+};
+
 const fmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -46,6 +65,7 @@ const precise = new Intl.NumberFormat("en-US", {
 
 let trackerData = null;
 let selectedYears = new Set();
+let selectedMonthRange = { startMonthIndex: 0, endMonthIndex: monthOptions.length - 1 };
 
 function byId(id) {
   return document.getElementById(id);
@@ -74,10 +94,23 @@ function defaultYears(data) {
   return availableYears(data).slice(-3);
 }
 
-function groupByYear(rows, years) {
+function visibleDayRange() {
+  return {
+    start: monthOptions[selectedMonthRange.startMonthIndex].start,
+    end: monthOptions[selectedMonthRange.endMonthIndex].end,
+  };
+}
+
+function isVisibleRow(row, dayRange) {
+  const firstVisibleDay = firstVisibleDayByYear[row.year] || 1;
+  return row.day_index >= Math.max(dayRange.start, firstVisibleDay) && row.day_index <= dayRange.end;
+}
+
+function groupByYear(rows, years, dayRange) {
   const wanted = new Set(years);
   return rows.reduce((acc, row) => {
     if (!wanted.has(row.year)) return acc;
+    if (!isVisibleRow(row, dayRange)) return acc;
     if (!acc[row.year]) acc[row.year] = [];
     acc[row.year].push(row);
     return acc;
@@ -170,6 +203,67 @@ function setupYearControls(data) {
   });
 }
 
+function setupMonthControls() {
+  const controls = byId("monthControls");
+  clear(controls);
+
+  const title = document.createElement("span");
+  title.className = "month-controls-label";
+  title.textContent = "Zoom";
+
+  const startSelect = document.createElement("select");
+  startSelect.setAttribute("aria-label", "Start month");
+
+  const endSelect = document.createElement("select");
+  endSelect.setAttribute("aria-label", "End month");
+
+  monthOptions.forEach((month, index) => {
+    const startOption = document.createElement("option");
+    startOption.value = String(index);
+    startOption.textContent = month.label;
+    startOption.selected = index === selectedMonthRange.startMonthIndex;
+    startSelect.append(startOption);
+
+    const endOption = document.createElement("option");
+    endOption.value = String(index);
+    endOption.textContent = month.label;
+    endOption.selected = index === selectedMonthRange.endMonthIndex;
+    endSelect.append(endOption);
+  });
+
+  startSelect.addEventListener("change", () => {
+    const nextStart = Number(startSelect.value);
+    selectedMonthRange.startMonthIndex = nextStart;
+    if (selectedMonthRange.endMonthIndex < nextStart) {
+      selectedMonthRange.endMonthIndex = nextStart;
+    }
+    render();
+  });
+
+  endSelect.addEventListener("change", () => {
+    const nextEnd = Number(endSelect.value);
+    selectedMonthRange.endMonthIndex = nextEnd;
+    if (selectedMonthRange.startMonthIndex > nextEnd) {
+      selectedMonthRange.startMonthIndex = nextEnd;
+    }
+    render();
+  });
+
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "month-reset";
+  reset.textContent = "Full year";
+  reset.disabled =
+    selectedMonthRange.startMonthIndex === 0 &&
+    selectedMonthRange.endMonthIndex === monthOptions.length - 1;
+  reset.addEventListener("click", () => {
+    selectedMonthRange = { startMonthIndex: 0, endMonthIndex: monthOptions.length - 1 };
+    render();
+  });
+
+  controls.append(title, startSelect, document.createTextNode("to"), endSelect, reset);
+}
+
 function riskBandRanges(data, yMin, yMax) {
   const bands = data.parameters?.risk_bands || [];
   return bands
@@ -226,7 +320,19 @@ function tooltipRows(grouped, dayIndex, field, formatter) {
     .sort((a, b) => b.year - a.year);
 }
 
-function drawHoverLayer({ svg, tooltip, grouped, field, formatter, xScale, yScale, margin, chartW, chartH }) {
+function drawHoverLayer({
+  svg,
+  tooltip,
+  grouped,
+  field,
+  formatter,
+  xScale,
+  yScale,
+  margin,
+  chartW,
+  chartH,
+  dayRange,
+}) {
   const hoverGroup = svgEl("g", { class: "hover-layer", opacity: "0" });
   const hoverLine = svgEl("line", {
     y1: margin.top,
@@ -249,7 +355,11 @@ function drawHoverLayer({ svg, tooltip, grouped, field, formatter, xScale, yScal
   const showTooltip = (event) => {
     const svgPoint = clientPointToSvg(svg, event);
     const viewX = svgPoint.x;
-    const dayIndex = Math.max(1, Math.min(365, Math.round(((viewX - margin.left) / chartW) * 364 + 1)));
+    const daySpan = dayRange.end - dayRange.start;
+    const dayIndex = Math.max(
+      dayRange.start,
+      Math.min(dayRange.end, Math.round(((viewX - margin.left) / chartW) * daySpan + dayRange.start)),
+    );
     const rows = tooltipRows(grouped, dayIndex, field, formatter);
     if (rows.length === 0) {
       hoverGroup.setAttribute("opacity", "0");
@@ -309,7 +419,8 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   const chartH = height - margin.top - margin.bottom;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-  const grouped = groupByYear(data.series, years);
+  const dayRange = visibleDayRange();
+  const grouped = groupByYear(data.series, years, dayRange);
   const values = Object.values(grouped)
     .flat()
     .map((row) => row[field])
@@ -321,14 +432,14 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   if (!Number.isFinite(yMax)) yMax = 1;
   if (riskBands) {
     yMin = Math.min(yMin, -1);
-    yMax = Math.max(yMax, 1.75);
+    yMax = Math.max(yMax, 4);
   }
 
   const yTicks = niceTicks(yMin, yMax, 6);
   yMin = Math.min(...yTicks);
   yMax = Math.max(...yTicks);
 
-  const xScale = (day) => margin.left + ((day - 1) / 364) * chartW;
+  const xScale = (day) => margin.left + ((day - dayRange.start) / (dayRange.end - dayRange.start)) * chartW;
   const yScale = (value) => margin.top + (1 - (value - yMin) / (yMax - yMin)) * chartH;
 
   if (riskBands) {
@@ -361,13 +472,15 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     svg.appendChild(labelNode);
   });
 
-  monthTicks.forEach(([month, day]) => {
+  monthTicks
+    .filter(([_month, day]) => day >= dayRange.start && day <= dayRange.end)
+    .forEach(([month, day]) => {
     const x = xScale(day);
     svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "grid-line" }));
     const labelNode = svgEl("text", { x, y: height - 16, "text-anchor": "middle", class: "axis-label" });
     labelNode.textContent = month;
     svg.appendChild(labelNode);
-  });
+    });
 
   const yTitle = svgEl("text", {
     x: 16,
@@ -398,28 +511,30 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   );
   if (latest && years.includes(data.current_year)) {
     const x = xScale(latest.day_index);
-    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
+    if (latest.day_index >= dayRange.start && latest.day_index <= dayRange.end) {
+      svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
 
-    const labelText = `Latest data ${latest.month_day}`;
-    const labelX = Math.min(width - margin.right - 118, Math.max(margin.left + 8, x + 8));
-    const labelY = margin.top + 16;
-    svg.appendChild(
-      svgEl("rect", {
-        x: labelX - 6,
-        y: labelY - 13,
-        width: 116,
-        height: 20,
-        rx: 4,
-        class: "current-marker-label-bg",
-      }),
-    );
-    const currentLabel = svgEl("text", {
-      x: labelX,
-      y: labelY + 1,
-      class: "current-marker-label",
-    });
-    currentLabel.textContent = labelText;
-    svg.appendChild(currentLabel);
+      const labelText = `Latest data ${latest.month_day}`;
+      const labelX = Math.min(width - margin.right - 118, Math.max(margin.left + 8, x + 8));
+      const labelY = margin.top + 16;
+      svg.appendChild(
+        svgEl("rect", {
+          x: labelX - 6,
+          y: labelY - 13,
+          width: 116,
+          height: 20,
+          rx: 4,
+          class: "current-marker-label-bg",
+        }),
+      );
+      const currentLabel = svgEl("text", {
+        x: labelX,
+        y: labelY + 1,
+        class: "current-marker-label",
+      });
+      currentLabel.textContent = labelText;
+      svg.appendChild(currentLabel);
+    }
   }
 
   drawHoverLayer({
@@ -433,6 +548,7 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     margin,
     chartW,
     chartH,
+    dayRange,
   });
   drawLegend(legendId, years, data.current_year);
 }
@@ -466,6 +582,7 @@ function render() {
   if (!trackerData) return;
   const years = [...selectedYears].sort((a, b) => a - b);
   setupYearControls(trackerData);
+  setupMonthControls();
   drawChart({
     svgId: "riskChart",
     legendId: "riskLegend",
