@@ -454,13 +454,6 @@ svg {
   pointer-events: none;
 }
 
-.chart-watermark-logo {
-  fill: var(--brand-navy);
-  font-family: var(--font-heading);
-  font-size: 10px;
-  font-weight: 850;
-}
-
 .chart-watermark-note {
   fill: var(--muted);
   font-size: 9px;

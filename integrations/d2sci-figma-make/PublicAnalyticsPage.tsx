@@ -331,8 +331,7 @@ function ChartTooltip({ active, payload, field }: any) {
 
 function ChartMark() {
   return (
-    <div className="mt-1 flex justify-end items-center gap-1 text-[9px] leading-none text-gray-400">
-      <span className="font-bold text-brand-navy opacity-70">D²Sci</span>
+    <div className="mt-1 flex justify-end text-[9px] leading-none text-gray-400">
       <span>© D²Sci public analytics</span>
     </div>
   );

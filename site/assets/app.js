@@ -500,23 +500,16 @@ function drawHoverLayer({
 function drawChartWatermark(svg, width, height, margin) {
   const group = svgEl("g", {
     class: "chart-watermark",
-    transform: `translate(${width - margin.right - 154} ${height - 8})`,
+    transform: `translate(${width - margin.right - 112} ${height - 8})`,
   });
-  const brand = svgEl("text", {
-    x: 0,
-    y: 0,
-    class: "chart-watermark-logo",
-  });
-  brand.textContent = "D²Sci";
-
   const note = svgEl("text", {
-    x: 42,
+    x: 0,
     y: 0,
     class: "chart-watermark-note",
   });
   note.textContent = "© D²Sci public analytics";
 
-  group.append(brand, note);
+  group.append(note);
   svg.appendChild(group);
 }
 
