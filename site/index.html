@@ -20,6 +20,7 @@
       <nav class="brand-nav" aria-label="D2Sci tracker navigation">
         <a class="brand-mark" href="https://www.d2sci.co/">D²Sci</a>
         <div class="nav-links">
+          <a href="#case-stoplight">Case stoplight</a>
           <a href="#indicator">Indicator</a>
           <a href="#method">Method</a>
           <a href="#resources">Resources</a>
@@ -45,14 +46,15 @@
     </header>
 
     <main>
-      <section class="summary-grid" aria-label="Current mpox risk summary">
+      <section class="summary-grid" aria-label="Current NYC mpox case summary">
         <div class="metric metric-status">
-          <span class="metric-label">Current status</span>
+          <span class="metric-label">Weekly case growth trend</span>
           <strong id="riskBand">Loading</strong>
         </div>
         <div class="metric">
-          <span class="metric-label">Risk index</span>
-          <strong id="riskIndex">--</strong>
+          <span class="metric-label">Indicators red</span>
+          <strong id="redIndicatorShare">--</strong>
+          <small id="redIndicatorCount" class="metric-detail">Current case stoplight unavailable</small>
         </div>
         <div class="metric">
           <span class="metric-label">Cases, last 28 days</span>
@@ -64,43 +66,116 @@
         </div>
       </section>
 
+      <section id="case-stoplight" class="chart-section stoplight-section" aria-labelledby="stoplightTitle">
+        <h2 id="stoplightTitle">NYC Mpox Case Activity Stoplight</h2>
+        <p id="stoplightMeta">Loading weekly case data…</p>
+        <p class="chart-meta">Higher reported case counts and faster growth are unfavorable. The colors describe case activity, not personal medical risk. Weekly growth and momentum use overlapping case counts, so the indicators are not independent.</p>
+        <p id="stoplightContrast" class="chart-meta" hidden></p>
+        <p class="chart-meta">On a narrow screen, scroll the table sideways for the comparison and details. Open “Why?” for each rule and the last color change.</p>
+        <div class="table-scroll">
+          <table class="stoplight-table">
+            <thead>
+              <tr>
+                <th scope="col">Dimension</th>
+                <th scope="col">Stoplight</th>
+                <th scope="col">Latest</th>
+                <th scope="col">Four weeks ago <small id="stoplightPriorDate"></small></th>
+                <th scope="col">Details</th>
+              </tr>
+            </thead>
+            <tbody id="stoplightBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <p class="chart-note">
+          Source: <a id="stoplightSource" href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox cases</a>; weekly growth trend and stoplight calculations by D²Sci. Thresholds are descriptive monitoring rules, not calibrated probabilities.
+        </p>
+      </section>
+
       <section id="indicator" class="chart-section">
         <div class="section-heading">
           <div>
-            <h2>Spread Risk Indicator</h2>
-            <p>Positive values indicate accelerating reported cases after smoothing.</p>
+            <h2>NYC Mpox Weekly Case Growth Trend by Calendar Date</h2>
+            <p>Estimated percentage change per week across eight consecutive seven-day blocks. Historical daily sources produce a rolling point each day; weekly-only sources produce a point at each completed week. Positive values mean cases are rising. The stoplight remains weekly and requires at least 15 cases in four weeks for red. Hover shows the actual ending date of each year's seven-day block.</p>
           </div>
           <div class="chart-controls">
             <div id="yearControls" class="year-controls" aria-label="Select years"></div>
             <div id="monthControls" class="month-controls" aria-label="Zoom charts to months"></div>
           </div>
         </div>
+        <p id="riskChartMeta" class="chart-meta">Loading source data…</p>
         <div class="chart-frame">
-          <svg id="riskChart" role="img" aria-label="Mpox spread risk indicator by year"></svg>
+          <svg id="riskChart" role="img" aria-label="NYC mpox eight-week case growth trend, percent per week, with daily rolling points where observed daily cases are available and weekly points otherwise, by calendar date and year"></svg>
         </div>
         <div id="riskLegend" class="legend" aria-label="Risk chart legend"></div>
+        <details class="chart-data-details">
+          <summary>View weekly case growth chart values as a table</summary>
+          <div class="table-scroll"><table id="riskDataTable" class="chart-data-table"></table></div>
+        </details>
+        <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox case data</a>; eight-week log-linear trend by D²Sci. Daily-source dates use eight non-overlapping trailing seven-day totals and are recalculated daily; weekly-source dates use eight completed weekly totals. The chart labels each year's frequency. X-axis: calendar month and day; Y-axis: estimated percentage change per week. Shading shows rate cutoffs; red in the stoplight additionally requires at least 15 cases in the latest four weeks. This is not a transmission or personal-risk estimate.</p>
+      </section>
+
+      <section class="chart-section" aria-labelledby="levelChartHeading">
+        <h2 id="levelChartHeading">NYC Mpox Recent Case Level by Calendar Date</h2>
+        <p>Reported cases in the trailing four complete weeks, plotted at each week-ending date. Higher counts are unfavorable.</p>
+        <p id="levelChartMeta" class="chart-meta">Loading source data…</p>
+        <div class="chart-frame"><svg id="levelChart" role="img" aria-label="NYC mpox trailing four-week cases by calendar date and year"></svg></div>
+        <div id="levelLegend" class="legend" aria-label="Recent case level chart legend"></div>
+        <details class="chart-data-details"><summary>View recent case level chart values as a table</summary><div class="table-scroll"><table id="levelDataTable" class="chart-data-table"></table></div></details>
+        <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox cases</a>; four-week totals by D²Sci. X-axis: calendar month and day, at week endings; Y-axis: reported cases in four complete weeks. Earlier years use daily case reports aggregated by week.</p>
+      </section>
+
+      <section class="chart-section" aria-labelledby="momentumChartHeading">
+        <h2 id="momentumChartHeading">NYC Mpox Momentum: Four-Week vs 13-Week Average</h2>
+        <p>First, compare weekly counts with the trailing four-week and 13-week weekly averages. Below, momentum is the percentage difference between those averages. Rising case activity is unfavorable; a decline greater than 15% remains green.</p>
+        <p id="momentumChartMeta" class="chart-meta">Loading source data…</p>
+        <h3>Weekly reported cases and rolling averages</h3>
+        <div class="chart-frame"><svg id="momentumComponentsChart" role="img" aria-label="NYC mpox weekly cases, four-week rolling average, and 13-week rolling average for the most recent selected year"></svg></div>
+        <div id="momentumComponentsLegend" class="legend" aria-label="Momentum components legend"></div>
+        <details class="chart-data-details"><summary>View momentum components as a table</summary><div class="table-scroll"><table id="momentumComponentsTable" class="chart-data-table"></table></div></details>
+        <h3>Momentum percentage by calendar date</h3>
+        <div class="chart-frame"><svg id="momentumChart" role="img" aria-label="NYC mpox momentum percentage by calendar date and year, with stoplight level shading"></svg></div>
+        <div id="momentumLegend" class="legend" aria-label="Momentum percentage chart legend"></div>
+        <details class="chart-data-details"><summary>View momentum percentage chart values as a table</summary><div class="table-scroll"><table id="momentumDataTable" class="chart-data-table"></table></div></details>
+        <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox cases</a>; rolling averages and comparison by D²Sci. Components show the most recent selected year and obey the month filter. X-axis: calendar month and day at week endings. Green: up to +15% (including declines); amber: above +15% through +40%; red: above +40%. Dates before the first reported 2022 case on May 19 are assumed to have zero cases in the rolling averages; early 2022 percentages are sensitive to this low comparison level.</p>
+      </section>
+
+      <section class="chart-section" aria-labelledby="yearComparisonChartHeading">
+        <h2 id="yearComparisonChartHeading">NYC Mpox 13-Week Percentage Change Versus Last Year</h2>
+        <p>Percentage change between a trailing 13-week case total and the 13 weeks ending 52 weeks earlier. Above zero means more cases than a year earlier.</p>
+        <p id="yearComparisonChartMeta" class="chart-meta">Loading source data…</p>
+        <div class="chart-frame"><svg id="yearComparisonChart" role="img" aria-label="NYC mpox trailing 13-week percentage change versus last year by calendar date and year, with stoplight level shading"></svg></div>
+        <div id="yearComparisonLegend" class="legend" aria-label="Year comparison chart legend"></div>
+        <details class="chart-data-details"><summary>View year comparison chart values as a table</summary><div class="table-scroll"><table id="yearComparisonDataTable" class="chart-data-table"></table></div></details>
+        <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox cases</a>; comparison by D²Sci. X-axis: calendar month and day, at week endings; Y-axis: percentage change. Green: at least 20% lower; amber: between 20% lower and 20% higher; red: more than 20% higher. A zero comparison baseline has no plotted percentage; the stoplight separately marks 1–4 new cases amber and 5 or more red.</p>
       </section>
 
       <section class="chart-section">
         <div class="section-heading">
           <div>
-            <h2>Cumulative Cases</h2>
-            <p>Year-to-date case totals, aligned by month and day.</p>
+            <h2>NYC Mpox Cumulative Reported Cases by Calendar Year</h2>
+            <p>Year-to-date reported cases, aligned by calendar month and day. Each line starts again at the beginning of its year.</p>
           </div>
         </div>
+        <p id="cumulativeChartMeta" class="chart-meta">Loading source data…</p>
         <div class="chart-frame">
-          <svg id="cumulativeChart" role="img" aria-label="Cumulative mpox cases by year"></svg>
+          <svg id="cumulativeChart" role="img" aria-label="NYC mpox cumulative reported cases by calendar year"></svg>
         </div>
         <div id="caseLegend" class="legend" aria-label="Cumulative chart legend"></div>
+        <details class="chart-data-details">
+          <summary>View cumulative cases chart values as a table</summary>
+          <div class="table-scroll"><table id="caseDataTable" class="chart-data-table"></table></div>
+        </details>
+        <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox case data</a>; chart by D²Sci. X-axis: calendar month and day; Y-axis: cumulative reported cases. The current-year line ends at the latest available data date.</p>
       </section>
 
       <section id="method" class="method-section">
         <h2>Method</h2>
         <p>
-          This unofficial tracker fetches public NYC Health mpox case data, smooths daily-equivalent
-          cases with a 14-day Gaussian window, and converts the day-to-day change in smoothed log
-          cases into a normalized spread indicator. Weekly case counts are distributed across their
-          reporting week before smoothing.
+          This unofficial tracker fetches public NYC Health mpox case data. Its weekly growth
+          trend fits eight consecutive seven-day case totals on a log(1 + cases) scale. The chart
+          updates the fit daily where cases are reported daily and weekly where only weekly totals exist. Weekly totals are
+          distributed across reporting days only for the daily-equivalent and cumulative case views,
+          not for the current growth trend.
         </p>
         <p>
           It is intended for situational awareness, not clinical or individual medical guidance.

@@ -86,20 +86,18 @@ def discover_current_weekly_chart_id(page_url: str = config.NYC_MPOX_PAGE_URL) -
         return config.CURRENT_WEEKLY_CHART_ID
 
     html = fetch_text(page_url)
-    chart_ids = list(dict.fromkeys(DATAWRAPPER_ID_RE.findall(html)))
-    for chart_id in chart_ids:
-        try:
-            frame, _metadata = fetch_datawrapper_dataset(
-                chart_id,
-                name="NYC current weekly mpox cases",
-                required_columns=("week_ending", "cases"),
-            )
-        except Exception:
-            continue
-        if len(frame) > 0:
-            return chart_id
-
-    raise ValueError(f"No current weekly mpox Datawrapper chart found at {page_url}")
+    chart_ids = set(DATAWRAPPER_ID_RE.findall(html))
+    expected = config.EXPECTED_CURRENT_WEEKLY_CHART_ID
+    if expected not in chart_ids:
+        raise ValueError(f"Reviewed weekly mpox chart {expected} is no longer embedded at {page_url}; review the replacement chart before publishing")
+    frame, _metadata = fetch_datawrapper_dataset(
+        expected,
+        name="NYC current weekly mpox cases",
+        required_columns=("week_ending", "cases"),
+    )
+    if frame.empty:
+        raise ValueError(f"Reviewed weekly mpox chart {expected} has no data")
+    return expected
 
 
 def load_2022_daily() -> tuple[pd.DataFrame, SourceMetadata]:

@@ -19,6 +19,10 @@ src/app/components/PublicAnalyticsPage.tsx
 This version fetches `risk_data.json`, validates `data.styling`, falls back to
 the previous hardcoded colors if the styling block is missing or malformed, and
 uses the JSON values for Recharts lines and risk-band fills.
+The D2Sci page also renders the upstream `case_stoplight` block for the weekly
+case activity table. The raw-count calculations and color thresholds live in
+`src/mpox_tracker/stoplight.py`, not in the D2Sci page.
+Both charts show their source, selected range, and latest date within the chart area and expose plotted values in expandable tables for keyboard and touch access.
 
 ## Route update
 

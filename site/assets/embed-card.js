@@ -19,12 +19,12 @@ fetch("data/summary.json", { cache: "no-store" })
   })
   .then((data) => {
     const summary = data.summary || {};
-    setText("embedRiskBand", summary.risk_band || "Unavailable");
+    setText("embedRiskBand", summary.weekly_growth_label || "Unavailable");
     setText(
       "embedRiskIndex",
-      summary.risk_index === null || summary.risk_index === undefined
-        ? "Risk index --"
-        : `Risk index ${numberFmt.format(summary.risk_index)}`,
+      summary.weekly_growth_percent === null || summary.weekly_growth_percent === undefined
+        ? "Weekly growth --"
+        : `Weekly growth ${summary.weekly_growth_percent > 0 ? "+" : ""}${numberFmt.format(summary.weekly_growth_percent)}%`,
     );
     setText(
       "embedMeta",
@@ -35,6 +35,6 @@ fetch("data/summary.json", { cache: "no-store" })
   })
   .catch(() => {
     setText("embedRiskBand", "Unavailable");
-    setText("embedRiskIndex", "Risk index --");
+    setText("embedRiskIndex", "Weekly growth --");
     setText("embedMeta", "Latest data --");
   });

@@ -12,8 +12,10 @@ import numpy as np
 import pandas as pd
 
 from . import config
+from .activity import build_activity_series, build_growth_series
 from .sources import SourceMetadata
 from . import styling
+from .stoplight import build_case_stoplight
 
 
 RISK_BANDS = styling.indicator_risk_bands()
@@ -136,6 +138,14 @@ def build_seasonal(cases: pd.DataFrame) -> pd.DataFrame:
     seasonal["risk_index"] = (
         log_smoothed - log_smoothed.shift(1)
     ) / config.RISK_NORMALIZATION_FACTOR
+    # The current source reports weekly totals. Its seven daily equivalents
+    # are useful for the cumulative chart, but are not observed daily cases.
+    observed_daily = (
+        seasonal["source"].ne("no reported cases")
+        & ~seasonal["source"].str.contains("weekly", case=False, na=False)
+    )
+    full_daily_window = observed_daily.rolling(config.SMOOTHING_WINDOW_DAYS, min_periods=config.SMOOTHING_WINDOW_DAYS).sum() == config.SMOOTHING_WINDOW_DAYS
+    seasonal["risk_index"] = seasonal["risk_index"].where(full_daily_window & full_daily_window.shift(1, fill_value=False))
     seasonal["cumulative_cases"] = seasonal.groupby("year")["cases"].cumsum()
 
     jan_2024 = (seasonal["date"] >= "2024-01-01") & (seasonal["date"] < "2024-02-01")
@@ -177,11 +187,13 @@ def build_payload(
     cases: pd.DataFrame,
     seasonal: pd.DataFrame,
     sources: list[SourceMetadata],
+    weekly_cases: pd.DataFrame | None = None,
+    weekly_source_url: str | None = None,
 ) -> dict:
     current_year = int(cases["year"].max())
     latest_date = pd.Timestamp(cases["date"].max())
     current = seasonal[seasonal["year"] == current_year].sort_values("date")
-    latest_current = current[current["date"] <= latest_date].dropna(subset=["risk_index"]).tail(1)
+    latest_current = current[current["date"] <= latest_date].tail(1)
 
     latest_risk = None
     latest_smoothed = None
@@ -193,6 +205,15 @@ def build_payload(
         latest_cumulative = _json_number(row["cumulative_cases"])
 
     last_28_cases = cases[cases["date"] > latest_date - pd.Timedelta(days=28)]["cases"].sum()
+    activity = build_activity_series(cases, weekly_cases)
+    growth_series = build_growth_series(cases, activity, weekly_cases)
+    stoplight = build_case_stoplight(
+        weekly_cases if weekly_cases is not None else pd.DataFrame(),
+        source_url=weekly_source_url,
+    )
+    latest_growth = next((row["weekly_growth_percent"] for row in reversed(activity) if row["date"] == stoplight["as_of"]), None)
+    growth_color = stoplight["rows"][0]["reading"]["color"] if stoplight["rows"] else None
+    growth_label = {"green": "Slow or declining", "amber": "Rising", "red": "Faster rising"}.get(growth_color)
 
     records = []
     for row in seasonal.sort_values(["year", "day_index"]).itertuples(index=False):
@@ -218,6 +239,9 @@ def build_payload(
         "summary": {
             "risk_index": latest_risk,
             "risk_band": _risk_band(latest_risk if isinstance(latest_risk, float) else None),
+            "weekly_growth_percent": latest_growth if growth_color else None,
+            "weekly_growth_color": growth_color,
+            "weekly_growth_label": growth_label,
             "smoothed_daily_cases": latest_smoothed,
             "cumulative_cases_current_year": latest_cumulative,
             "cases_last_28_days": round(float(last_28_cases), 1),
@@ -227,6 +251,15 @@ def build_payload(
             "smoothing_std_days": config.SMOOTHING_STD_DAYS,
             "risk_normalization_factor": config.RISK_NORMALIZATION_FACTOR,
             "risk_bands": RISK_BANDS,
+            "weekly_growth": {
+                "window_weeks": 8,
+                "method": "least-squares slope of log(1 + reported weekly cases), converted to percent change per week",
+                "chart_daily_method": "eight non-overlapping trailing seven-day totals, refitted at each observed daily date",
+                "chart_weekly_method": "eight completed weekly totals, refitted at each reporting week ending",
+                "green_max_percent": 5,
+                "red_above_percent": 15,
+                "red_min_cases_in_four_weeks": 15,
+            },
             "indicator_exclusions": [
                 {
                     "field": "risk_index",
@@ -237,10 +270,14 @@ def build_payload(
             ],
         },
         "sources": [source.to_dict() for source in sources],
+        "case_stoplight": stoplight,
+        "case_activity_series": activity,
+        "case_growth_series": growth_series,
         "series": records,
         "notes": [
             "This is an unofficial indicator derived from public NYC Health case data.",
             "Weekly case counts are distributed across the week ending date to create a daily-equivalent signal for smoothing.",
+            "The case-growth chart uses genuine daily reports for daily rolling points and original weekly totals for weekly points.",
             "Feb. 29 is omitted from the comparison axis so years align by month and day.",
         ],
     }
@@ -262,6 +299,7 @@ def write_outputs(result: BuildResult, output_dir: Path) -> None:
         "generated_at": result.payload["generated_at"],
         "latest_data_date": result.payload["latest_data_date"],
         "summary": result.payload["summary"],
+        "case_stoplight": result.payload["case_stoplight"],
         "sources": result.payload["sources"],
     }
     (data_dir / "summary.json").write_text(

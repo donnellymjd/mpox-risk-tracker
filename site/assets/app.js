@@ -55,11 +55,27 @@ const fmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
 
 const compact = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
+const percentage = { format: (value) => `${value > 0 ? "+" : ""}${compact.format(value)}%` };
+
+const YEAR_LINE_PATTERNS = [
+  { dash: null, label: "solid" },
+  { dash: "10 4", label: "long dash" },
+  { dash: "4 3", label: "short dash" },
+  { dash: "10 3 2 3", label: "dash-dot" },
+  { dash: "2 3", label: "dotted" },
+  { dash: "14 3 3 3", label: "long-short dash" },
+];
+
+function linePatternForYear(year) {
+  const index = ((Number(year) - 2022) % YEAR_LINE_PATTERNS.length + YEAR_LINE_PATTERNS.length) % YEAR_LINE_PATTERNS.length;
+  return YEAR_LINE_PATTERNS[index];
+}
 
 const precise = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
@@ -161,35 +177,21 @@ function colorForYear(year) {
   return activeStyling.yearColors[String(year)] || "#2f665f";
 }
 
-function classNameForBand(label) {
-  return String(label || "unknown")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
 function availableYears(data) {
   return [...new Set(data.series.map((row) => row.year))].sort((a, b) => a - b);
 }
 
 function defaultYears(data) {
   const years = availableYears(data);
-  const wanted = [2022, data.current_year - 1, data.current_year];
+  const wanted = [data.current_year - 1, data.current_year];
   const defaults = wanted.filter((year, index) => wanted.indexOf(year) === index && years.includes(year));
   return defaults.length > 0 ? defaults : years.slice(-3);
 }
 
-function monthIndexFromDate(isoDate) {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return new Date().getUTCMonth();
-  return date.getUTCMonth();
-}
-
-function defaultMonthRange(data) {
-  const monthIndex = monthIndexFromDate(data.latest_data_date);
+function defaultMonthRange() {
   return {
-    startMonthIndex: Math.max(0, monthIndex - 1),
-    endMonthIndex: Math.min(monthOptions.length - 1, monthIndex + 1),
+    startMonthIndex: 0,
+    endMonthIndex: new Date().getMonth(),
   };
 }
 
@@ -257,17 +259,17 @@ function linePath(rows, xScale, yScale, field) {
   return parts.join(" ");
 }
 
-function drawLegend(target, years, currentYear) {
+function drawLegend(target, years, currentYear, frequencyByYear = {}) {
   const legend = byId(target);
   clear(legend);
   years.forEach((year) => {
     const item = document.createElement("span");
     item.className = "legend-item";
-    const swatch = document.createElement("span");
-    swatch.className = "legend-swatch";
-    swatch.style.background = colorForYear(year);
-    if (year === currentYear) swatch.style.height = "5px";
-    item.append(swatch, document.createTextNode(String(year)));
+    const swatch = svgEl("svg", { width: 34, height: 12, "aria-hidden": "true", class: "legend-line-swatch" });
+    const pattern = linePatternForYear(year);
+    swatch.append(svgEl("line", { x1: 1, x2: 33, y1: 6, y2: 6, stroke: colorForYear(year), "stroke-width": year === currentYear ? 3.4 : 2.5, "stroke-dasharray": pattern.dash ?? "none", "stroke-linecap": "round" }));
+    item.setAttribute("aria-label", `${year}, ${pattern.label} line${frequencyByYear[year] ? `, ${frequencyByYear[year]} source` : ""}`);
+    item.append(swatch, document.createTextNode(`${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`));
     legend.append(item);
   });
 }
@@ -363,8 +365,31 @@ function setupMonthControls() {
   controls.append(title, startSelect, document.createTextNode("to"), endSelect, reset);
 }
 
-function riskBandRanges(data, yMin, yMax) {
-  return activeStyling.riskBands
+const ACTIVITY_BANDS = {
+  weekly_growth_percent: [
+    { label: "Green ≤+5%", min: null, max: 5, color: "#d8e8df" },
+    { label: "Amber +5–15%", min: 5, max: 15, color: "#fff0bf" },
+    { label: "Red >+15%*", min: 15, max: null, color: "#f3b7b2" },
+  ],
+  four_week_cases: [
+    { label: "Green <15", min: null, max: 15, color: "#d8e8df" },
+    { label: "Amber 15–59", min: 15, max: 60, color: "#fff0bf" },
+    { label: "Red ≥60", min: 60, max: null, color: "#f3b7b2" },
+  ],
+  momentum_percent: [
+    { label: "Green ≤+15%", min: null, max: 15, color: "#d8e8df" },
+    { label: "Amber +15–40%", min: 15, max: 40, color: "#fff0bf" },
+    { label: "Red >+40%", min: 40, max: null, color: "#f3b7b2" },
+  ],
+  year_over_year_percent: [
+    { label: "Green ≤−20%", min: null, max: -20, color: "#d8e8df" },
+    { label: "Amber −20–+20%", min: -20, max: 20, color: "#fff0bf" },
+    { label: "Red >+20%", min: 20, max: null, color: "#f3b7b2" },
+  ],
+};
+
+function riskBandRanges(bands, yMin, yMax) {
+  return bands
     .map((band) => ({
       label: band.label,
       from: band.min === null || band.min === undefined ? yMin : band.min,
@@ -384,8 +409,8 @@ function clientPointToSvg(svg, event) {
   if (!transform) {
     const bounds = svg.getBoundingClientRect();
     return {
-      x: ((event.clientX - bounds.left) / bounds.width) * 960,
-      y: ((event.clientY - bounds.top) / bounds.height) * 380,
+      x: ((event.clientX - bounds.left) / bounds.width) * svg.viewBox.baseVal.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * svg.viewBox.baseVal.height,
     };
   }
   const point = svg.createSVGPoint();
@@ -407,14 +432,15 @@ function ensureTooltip(svg) {
   return tooltip;
 }
 
-function tooltipRows(grouped, dayIndex, field, formatter) {
+function tooltipRows(grouped, dayIndex, field, formatter, weekly = false) {
   return Object.entries(grouped)
+    .filter(([, rows]) => rows.some((row) => Number.isFinite(row[field])))
     .map(([year, rows]) => {
-      const row = rows.find((item) => item.day_index === dayIndex);
-      if (!row || row[field] === null || row[field] === undefined) return null;
-      return { year: Number(year), row, value: row[field], formatted: valueText(row[field], "--", formatter) };
+      const tolerance = weekly && rows.every((item) => item.frequency !== "daily") ? 3 : 0;
+      const row = rows.filter((item) => Number.isFinite(item[field]) && Math.abs(item.day_index - dayIndex) <= tolerance)
+        .sort((a, b) => Math.abs(a.day_index - dayIndex) - Math.abs(b.day_index - dayIndex) || b.day_index - a.day_index)[0] ?? null;
+      return { year: Number(year), row, value: row?.[field] ?? null, formatted: row ? valueText(row[field], "--", formatter) : "—" };
     })
-    .filter(Boolean)
     .sort((a, b) => b.year - a.year);
 }
 
@@ -430,6 +456,7 @@ function drawHoverLayer({
   chartW,
   chartH,
   dayRange,
+  weekly = false,
 }) {
   const hoverGroup = svgEl("g", { class: "hover-layer", opacity: "0" });
   const hoverLine = svgEl("line", {
@@ -458,8 +485,8 @@ function drawHoverLayer({
       dayRange.start,
       Math.min(dayRange.end, Math.round(((viewX - margin.left) / chartW) * daySpan + dayRange.start)),
     );
-    const rows = tooltipRows(grouped, dayIndex, field, formatter);
-    if (rows.length === 0) {
+    const rows = tooltipRows(grouped, dayIndex, field, formatter, weekly);
+    if (rows.every(({ row }) => !row)) {
       hoverGroup.setAttribute("opacity", "0");
       tooltip.hidden = true;
       return;
@@ -468,10 +495,10 @@ function drawHoverLayer({
     clear(hoverGroup);
     const x = xScale(dayIndex);
     hoverGroup.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: margin.top + chartH, class: "hover-line" }));
-    rows.forEach(({ year, value }) => {
+    rows.filter(({ row }) => row).forEach(({ year, row, value }) => {
       hoverGroup.appendChild(
         svgEl("circle", {
-          cx: x,
+          cx: xScale(row.day_index),
           cy: yScale(value),
           r: year === trackerData.current_year ? 4.8 : 3.8,
           fill: colorForYear(year),
@@ -482,21 +509,23 @@ function drawHoverLayer({
     });
     hoverGroup.setAttribute("opacity", "1");
 
-    const title = rows[0].row.month_day;
+    const title = weekly
+      ? `Around ${new Date(Date.UTC(2001, 0, dayIndex)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`
+      : rows.find(({ row }) => row)?.row.month_day;
     tooltip.innerHTML = [
       `<strong>${title}</strong>`,
       ...rows.map(
         ({ year, formatted, row }) =>
-          `<span><i style="background:${colorForYear(year)}"></i>${year}: ${formatted}<small>${valueText(row.cases)} cases</small></span>`,
+          `<span><i style="background:${colorForYear(year)}"></i>${year}: ${formatted}<small>${row ? `${weekly ? `${row.frequency === "daily" ? "7 days ending" : "Week ending"} ${fmt.format(new Date(`${row.date}T00:00:00Z`))} · ` : ""}${valueText(weekly ? row.weekly_cases : row.cases)} ${weekly ? row.frequency === "daily" ? "cases in trailing 7 days" : `case${row.weekly_cases === 1 ? "" : "s"} that week` : field === "risk_index" ? "reported daily cases" : "daily-equivalent cases"}` : "No nearby observation"}</small></span>`,
       ),
     ].join("");
 
+    tooltip.hidden = false;
     const frameBounds = svg.closest(".chart-frame").getBoundingClientRect();
-    const left = Math.min(frameBounds.width - 190, Math.max(8, event.clientX - frameBounds.left + 12));
-    const top = Math.min(frameBounds.height - 90, Math.max(8, event.clientY - frameBounds.top + 12));
+    const left = Math.min(frameBounds.width - tooltip.offsetWidth - 8, Math.max(8, event.clientX - frameBounds.left + 12));
+    const top = Math.min(frameBounds.height - tooltip.offsetHeight - 8, Math.max(8, event.clientY - frameBounds.top + 12));
     tooltip.style.left = `${left}px`;
     tooltip.style.top = `${top}px`;
-    tooltip.hidden = false;
   };
 
   overlay.addEventListener("mousemove", showTooltip);
@@ -522,28 +551,43 @@ function drawChartWatermark(svg, width, height, margin) {
   svg.appendChild(group);
 }
 
-function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands = false }) {
+function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands = false, bands = riskBands ? activeStyling.riskBands : ACTIVITY_BANDS[field], series = data.series, title }) {
   const svg = byId(svgId);
   clear(svg);
   const tooltip = ensureTooltip(svg);
   const width = 960;
-  const height = 380;
-  const margin = { top: 20, right: 24, bottom: 46, left: 54 };
+  const height = 430;
+  const margin = { top: 76, right: 24, bottom: 46, left: 54 };
   const chartW = width - margin.left - margin.right;
   const chartH = height - margin.top - margin.bottom;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
+  title ||= field === "risk_index" ? "NYC Mpox Case Growth Indicator" : "NYC Mpox Cumulative Reported Cases";
   const dayRange = visibleDayRange();
-  const grouped = groupByYear(data.series, years, dayRange);
+  const grouped = groupByYear(series, years, dayRange);
+  const plottedYears = years.filter((year) => grouped[year]?.some((row) => Number.isFinite(row[field])));
+  const frequencyByYear = field === "weekly_growth_percent"
+    ? Object.fromEntries(plottedYears.map((year) => [year, grouped[year].find((row) => row.frequency)?.frequency ?? "weekly"]))
+    : {};
+  const yearLabels = plottedYears.map((year) => `${year}${frequencyByYear[year] ? ` ${frequencyByYear[year]}` : ""}`);
+  const contextLines = [
+    `NYC Health · Years plotted: ${yearLabels.length ? yearLabels.join(", ") : "none"} · Months: ${monthOptions[selectedMonthRange.startMonthIndex].label}–${monthOptions[selectedMonthRange.endMonthIndex].label}`,
+    `Latest source week ending ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))} · ${label}`,
+  ];
+  svg.appendChild(svgEl("text", { x: margin.left, y: 22, class: "chart-inline-title" })).textContent = title;
+  contextLines.forEach((line, index) => {
+    svg.appendChild(svgEl("text", { x: margin.left, y: 43 + index * 18, class: "chart-inline-meta" })).textContent = line;
+  });
   const values = Object.values(grouped)
     .flat()
     .map((row) => row[field])
     .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
 
   let yMin = minY ?? Math.min(...values, 0);
-  let yMax = Math.max(...values, riskBands ? 1.6 : 1);
+  let yMax = Math.max(...values, bands ? (bands.at(-1).min ?? 1) + 1 : 1);
   if (!Number.isFinite(yMin)) yMin = 0;
   if (!Number.isFinite(yMax)) yMax = 1;
+  if (bands && bands[0].max !== null) yMin = Math.min(yMin, bands[0].max - 1);
   if (riskBands) {
     yMin = Math.min(yMin, -1);
     yMax = Math.max(yMax, 4);
@@ -556,8 +600,8 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   const xScale = (day) => margin.left + ((day - dayRange.start) / (dayRange.end - dayRange.start)) * chartW;
   const yScale = (value) => margin.top + (1 - (value - yMin) / (yMax - yMin)) * chartH;
 
-  if (riskBands) {
-    riskBandRanges(data, yMin, yMax).forEach((band) => {
+  if (bands) {
+    riskBandRanges(bands, yMin, yMax).forEach((band) => {
       svg.appendChild(
         svgEl("rect", {
           x: margin.left,
@@ -614,28 +658,29 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
         d: path,
         class: "series-line",
         stroke: colorForYear(year),
-        "stroke-width": Number(year) === data.current_year ? 3.4 : 1.8,
-        opacity: Number(year) === data.current_year ? 1 : 0.78,
+        "stroke-width": Number(year) === data.current_year ? 3.4 : 2.5,
+        "stroke-dasharray": linePatternForYear(year).dash ?? "none",
+        opacity: 1,
       }),
     );
   });
 
-  const latest = data.series.find(
+  const latest = series.find(
     (row) => row.year === data.current_year && row.date === data.latest_data_date,
   );
-  if (latest && years.includes(data.current_year)) {
+  if (latest && Number.isFinite(latest[field]) && years.includes(data.current_year)) {
     const x = xScale(latest.day_index);
     if (latest.day_index >= dayRange.start && latest.day_index <= dayRange.end) {
       svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
 
-      const labelText = `Latest data ${latest.month_day}`;
-      const labelX = Math.min(width - margin.right - 118, Math.max(margin.left + 8, x + 8));
+      const labelText = `Latest ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))}`;
+      const labelX = Math.min(width - margin.right - 180, Math.max(margin.left + 8, x + 8));
       const labelY = margin.top + 16;
       svg.appendChild(
         svgEl("rect", {
           x: labelX - 6,
           y: labelY - 13,
-          width: 116,
+          width: 180,
           height: 20,
           rx: 4,
           class: "current-marker-label-bg",
@@ -656,7 +701,8 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     tooltip,
     grouped,
     field,
-    formatter: field === "risk_index" ? precise : compact,
+    formatter: field === "risk_index" ? precise : field.endsWith("_percent") ? percentage : compact,
+    weekly: series !== data.series,
     xScale,
     yScale,
     margin,
@@ -665,20 +711,84 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     dayRange,
   });
   drawChartWatermark(svg, width, height, margin);
-  drawLegend(legendId, years, data.current_year);
+  drawLegend(legendId, plottedYears, data.current_year, frequencyByYear);
+}
+
+function drawMomentumComponents(data, years, activity) {
+  const svg = byId("momentumComponentsChart");
+  clear(svg);
+  const year = years.at(-1);
+  const range = visibleDayRange();
+  // activity already contains rolling averages from the full source history.
+  // Apply the display filter only after those averages have been calculated.
+  const rows = year === undefined ? [] : activity.filter((row) => row.year === year && isVisibleRow(row, range));
+  const fields = [
+    ["weekly_cases", "Weekly cases", "#2876d2", null, "solid"],
+    ["four_week_average", "4-week average", "#ee6536", "10 4", "long dash"],
+    ["thirteen_week_average", "13-week average", "#19a974", "2 3", "dotted"],
+  ];
+  const width = 960, height = 430;
+  const margin = { top: 76, right: 24, bottom: 46, left: 54 };
+  const chartW = width - margin.left - margin.right;
+  const chartH = height - margin.top - margin.bottom;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const title = `NYC Mpox Weekly Cases and Rolling Averages — ${year ?? "No year selected"}`;
+  svg.appendChild(svgEl("text", { x: margin.left, y: 22, class: "chart-inline-title" })).textContent = title;
+  svg.appendChild(svgEl("text", { x: margin.left, y: 43, class: "chart-inline-meta" })).textContent = `NYC Health · ${monthOptions[selectedMonthRange.startMonthIndex].label}–${monthOptions[selectedMonthRange.endMonthIndex].label} · Weekly counts and cases per week`;
+  svg.appendChild(svgEl("text", { x: margin.left, y: 61, class: "chart-inline-meta" })).textContent = `Latest source week ending ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))}`;
+  const values = rows.flatMap((row) => fields.map(([field]) => row[field])).filter((value) => Number.isFinite(value));
+  const ticks = niceTicks(0, Math.max(1, ...values), 6);
+  const yMax = Math.max(...ticks);
+  const xScale = (day) => margin.left + ((day - range.start) / (range.end - range.start)) * chartW;
+  const yScale = (value) => margin.top + (1 - value / yMax) * chartH;
+  ticks.forEach((tick) => {
+    const y = yScale(tick);
+    svg.appendChild(svgEl("line", { x1: margin.left, x2: width - margin.right, y1: y, y2: y, class: "grid-line" }));
+    svg.appendChild(svgEl("text", { x: margin.left - 10, y: y + 4, "text-anchor": "end", class: "axis-label" })).textContent = compact.format(tick);
+  });
+  monthTicks.filter(([, day]) => day >= range.start && day <= range.end).forEach(([month, day]) => {
+    const x = xScale(day);
+    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "grid-line" }));
+    svg.appendChild(svgEl("text", { x, y: height - 16, "text-anchor": "middle", class: "axis-label" })).textContent = month;
+  });
+  svg.appendChild(svgEl("text", { x: 16, y: margin.top + chartH / 2, transform: `rotate(-90 16 ${margin.top + chartH / 2})`, "text-anchor": "middle", class: "axis-title" })).textContent = "Cases per week";
+  fields.forEach(([field, , color, dash]) => {
+    const path = linePath(rows, xScale, yScale, field);
+    if (path) svg.appendChild(svgEl("path", { d: path, class: "series-line", stroke: color, "stroke-width": field === "weekly_cases" ? 2.6 : 3, "stroke-dasharray": dash ?? "none" }));
+    const latest = rows.at(-1);
+    if (latest && Number.isFinite(latest[field])) svg.appendChild(svgEl("circle", { cx: xScale(latest.day_index), cy: yScale(latest[field]), r: 4.5, fill: color }));
+  });
+  drawChartWatermark(svg, width, height, margin);
+  const legend = byId("momentumComponentsLegend");
+  clear(legend);
+  fields.forEach(([, name, color, dash, pattern]) => {
+    const item = document.createElement("span"); item.className = "legend-item";
+    const swatch = svgEl("svg", { width: 34, height: 12, "aria-hidden": "true", class: "legend-line-swatch" });
+    swatch.append(svgEl("line", { x1: 1, x2: 33, y1: 6, y2: 6, stroke: color, "stroke-width": 3, "stroke-dasharray": dash ?? "none", "stroke-linecap": "round" }));
+    item.setAttribute("aria-label", `${name}, ${pattern} line`);
+    item.append(swatch, document.createTextNode(name)); legend.append(item);
+  });
+  const table = byId("momentumComponentsTable");
+  clear(table);
+  const caption = document.createElement("caption"); caption.textContent = `${title}. Source: NYC Health through ${data.latest_data_date}. Values are cases per week.`; table.append(caption);
+  const head = document.createElement("thead"), header = document.createElement("tr");
+  ["Week ending", ...fields.map(([, name]) => name)].forEach((name) => { const cell = document.createElement("th"); cell.scope = "col"; cell.textContent = name; header.append(cell); });
+  head.append(header); table.append(head);
+  const body = document.createElement("tbody");
+  rows.forEach((row) => { const tr = document.createElement("tr"); const th = document.createElement("th"); th.scope = "row"; th.textContent = row.date; tr.append(th); fields.forEach(([field]) => { const td = document.createElement("td"); td.textContent = valueText(row[field], "—", precise); tr.append(td); }); body.append(tr); });
+  table.append(body);
 }
 
 function renderSummary(data) {
-  const band = data.summary.risk_band || "Unknown";
-  byId("riskBand").textContent = band;
-  byId("riskIndex").textContent = valueText(data.summary.risk_index, "--", precise);
+  const growthColor = data.summary.weekly_growth_color;
+  byId("riskBand").textContent = data.summary.weekly_growth_label || "Unavailable";
   byId("last28").textContent = valueText(data.summary.cases_last_28_days);
   byId("latestDate").textContent = fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`));
   byId("generatedAt").textContent = `Generated ${fmt.format(new Date(data.generated_at))}`;
 
   const status = document.querySelector(".metric-status");
   status.classList.remove("very-low", "low", "moderate", "moderate-high", "high", "unknown");
-  status.classList.add(classNameForBand(band));
+  status.classList.add({ green: "low", amber: "moderate", red: "high" }[growthColor] || "unknown");
 
   const sourceList = byId("sourceList");
   clear(sourceList);
@@ -693,19 +803,138 @@ function renderSummary(data) {
   });
 }
 
+function renderStoplight(data) {
+  const stoplight = data.case_stoplight;
+  const body = byId("stoplightBody");
+  clear(body);
+  const ageDays = stoplight?.as_of ? (Date.now() - Date.parse(`${stoplight.as_of}T00:00:00Z`)) / 86400000 : NaN;
+  const colors = new Set(["green", "amber", "red"]);
+  const valid = stoplight?.version === 3 && typeof stoplight.as_of === "string" &&
+    typeof stoplight.four_weeks_ago_date === "string" && Array.isArray(stoplight.rows) &&
+    stoplight.rows.length === 4 && stoplight.rows[0]?.key === "growthIndicator" && Number.isFinite(ageDays) && ageDays >= 0 && ageDays <= 14 &&
+    stoplight.rows.every((item) => item && typeof item.name === "string" && typeof item.rule === "string" &&
+      typeof item.changed_at === "string" && item.reading && colors.has(item.reading.color) &&
+      typeof item.reading.value === "string" && item.four_weeks_ago && colors.has(item.four_weeks_ago.color) &&
+      typeof item.four_weeks_ago.value === "string");
+  if (!valid) {
+    byId("redIndicatorShare").textContent = "--";
+    byId("redIndicatorCount").textContent = "Current case stoplight unavailable";
+    byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting current, compatible stoplight data from the tracker build.";
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+
+  const redCount = stoplight.rows.filter((item) => item.reading.color === "red").length;
+  byId("redIndicatorShare").textContent = `${Math.round((redCount / stoplight.rows.length) * 100)}%`;
+  byId("redIndicatorCount").textContent = `${redCount} of ${stoplight.rows.length} current indicators`;
+
+  const contrast = byId("stoplightContrast");
+  const elevatedCounts = stoplight.rows.some((item) => (item.key === "level" || item.key === "momentum") && item.reading.color === "red");
+  contrast.hidden = !(stoplight.rows[0].reading.color === "green" && elevatedCounts);
+  contrast.textContent = contrast.hidden ? "" : "Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.";
+
+  byId("stoplightMeta").textContent = `NYC Health data through ${fmt.format(new Date(`${stoplight.as_of}T00:00:00Z`))}. Weekly case growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year.`;
+  byId("stoplightPriorDate").textContent = `As of ${fmt.format(new Date(`${stoplight.four_weeks_ago_date}T00:00:00Z`))}`;
+  if (stoplight.source_url) byId("stoplightSource").href = stoplight.source_url;
+
+  stoplight.rows.forEach((item) => {
+    const row = document.createElement("tr");
+    const changed = fmt.format(new Date(`${item.changed_at}T00:00:00Z`));
+
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = item.name;
+    const status = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `stoplight-badge ${item.reading.color}`;
+    badge.textContent = item.reading.color;
+    status.append(badge);
+    const latest = document.createElement("td");
+    latest.textContent = item.reading.value;
+    const prior = document.createElement("td");
+    prior.textContent = `${item.four_weeks_ago.value} (${item.four_weeks_ago.color} then)`;
+    const detailCell = document.createElement("td");
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Why?";
+    const rule = document.createElement("p");
+    rule.textContent = item.rule;
+    const changedNote = document.createElement("p");
+    changedNote.textContent = `Current color since the week ending ${changed}.`;
+    details.append(summary, rule, changedNote);
+    detailCell.append(details);
+    row.append(name, status, latest, prior, detailCell);
+    body.append(row);
+  });
+}
+
+function renderChartDataTable(tableId, data, years, field, title, series = data.series) {
+  const table = byId(tableId);
+  clear(table);
+  const grouped = groupByYear(series, years, visibleDayRange());
+  const byDay = new Map();
+  Object.entries(grouped).forEach(([year, rows]) => {
+    rows.forEach((row) => {
+      if (!byDay.has(row.day_index)) byDay.set(row.day_index, { date: row.month_day, values: {} });
+      byDay.get(row.day_index).values[year] = row[field];
+    });
+  });
+
+  const caption = document.createElement("caption");
+  caption.textContent = `${title}. NYC Health data through ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))}. Values for the selected years and months.`;
+  table.append(caption);
+  const head = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  ["Month and day", ...years.map(String)].forEach((name) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = name;
+    headerRow.append(th);
+  });
+  head.append(headerRow);
+  table.append(head);
+  const body = document.createElement("tbody");
+  [...byDay.entries()].sort(([a], [b]) => a - b).forEach(([, entry]) => {
+    const row = document.createElement("tr");
+    const dateCell = document.createElement("th");
+    dateCell.scope = "row";
+    dateCell.textContent = entry.date;
+    row.append(dateCell);
+    years.forEach((year) => {
+      const cell = document.createElement("td");
+      cell.textContent = valueText(entry.values[year], "—", field === "risk_index" ? precise : field.endsWith("_percent") ? percentage : compact);
+      row.append(cell);
+    });
+    body.append(row);
+  });
+  table.append(body);
+}
+
 function render() {
   if (!trackerData) return;
   const years = [...selectedYears].sort((a, b) => a - b);
+  const context = `Source: NYC Health · Years selected: ${years.length ? years.join(", ") : "none"} · Months shown: ${monthOptions[selectedMonthRange.startMonthIndex].label}–${monthOptions[selectedMonthRange.endMonthIndex].label} · Latest source week ending ${fmt.format(new Date(`${trackerData.latest_data_date}T00:00:00Z`))}`;
+  byId("riskChartMeta").textContent = context;
+  byId("cumulativeChartMeta").textContent = context;
+  ["levelChartMeta", "momentumChartMeta", "yearComparisonChartMeta"].forEach((id) => { byId(id).textContent = context; });
   setupYearControls(trackerData);
   setupMonthControls();
+  const activity = Array.isArray(trackerData.case_activity_series) ? trackerData.case_activity_series : [];
+  const growth = Array.isArray(trackerData.case_growth_series) ? trackerData.case_growth_series : activity;
   drawChart({
     svgId: "riskChart",
     legendId: "riskLegend",
     data: trackerData,
     years,
-    field: "risk_index",
-    label: "Risk index",
-    riskBands: true,
+    field: "weekly_growth_percent",
+    label: "Estimated weekly case growth (%)",
+    series: growth,
+    title: "NYC Mpox Weekly Case Growth Trend",
   });
   drawChart({
     svgId: "cumulativeChart",
@@ -714,8 +943,19 @@ function render() {
     years,
     field: "cumulative_cases",
     minY: 0,
-    label: "Cases",
+    label: "Cumulative reported cases",
   });
+  drawMomentumComponents(trackerData, years, activity);
+  [
+    { svgId: "levelChart", legendId: "levelLegend", tableId: "levelDataTable", field: "four_week_cases", title: "NYC Mpox Recent Case Level", label: "Cases in trailing four weeks", minY: 0 },
+    { svgId: "momentumChart", legendId: "momentumLegend", tableId: "momentumDataTable", field: "momentum_percent", title: "NYC Mpox Momentum: 4-Week vs 13-Week Average", label: "Percentage difference in weekly averages" },
+    { svgId: "yearComparisonChart", legendId: "yearComparisonLegend", tableId: "yearComparisonDataTable", field: "year_over_year_percent", title: "NYC Mpox 13-Week Percentage Change Versus Last Year", label: "Percentage change vs 52 weeks earlier" },
+  ].forEach((chart) => {
+    drawChart({ ...chart, data: trackerData, years, series: activity });
+    renderChartDataTable(chart.tableId, trackerData, years, chart.field, `${chart.title} (${chart.label})`, activity);
+  });
+  renderChartDataTable("riskDataTable", trackerData, years, "weekly_growth_percent", "NYC mpox weekly case growth trend (percent per week; daily rolling where available, otherwise weekly)", growth);
+  renderChartDataTable("caseDataTable", trackerData, years, "cumulative_cases", "NYC mpox cumulative reported cases");
 }
 
 fetch("data/risk_data.json", { cache: "no-store" })
@@ -727,15 +967,27 @@ fetch("data/risk_data.json", { cache: "no-store" })
     trackerData = data;
     activeStyling = resolveStyling(data);
     selectedYears = new Set(defaultYears(data));
-    selectedMonthRange = defaultMonthRange(data);
+    selectedMonthRange = defaultMonthRange();
     renderSummary(data);
+    renderStoplight(data);
     render();
   })
   .catch((error) => {
     byId("riskBand").textContent = "Unavailable";
-    byId("riskIndex").textContent = "--";
+    byId("redIndicatorShare").textContent = "--";
+    byId("redIndicatorCount").textContent = "Current case stoplight unavailable";
     byId("last28").textContent = "--";
     byId("latestDate").textContent = "--";
+    byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
+    const errorRow = document.createElement("tr");
+    const errorCell = document.createElement("td");
+    errorCell.colSpan = 5;
+    errorCell.textContent = "Tracker data could not be loaded.";
+    errorRow.append(errorCell);
+    byId("stoplightBody").replaceChildren(errorRow);
+    byId("riskChartMeta").textContent = "Tracker data could not be loaded.";
+    byId("cumulativeChartMeta").textContent = "Tracker data could not be loaded.";
+    ["levelChartMeta", "momentumChartMeta", "yearComparisonChartMeta"].forEach((id) => { byId(id).textContent = "Tracker data could not be loaded."; });
     console.error(error);
   });
 

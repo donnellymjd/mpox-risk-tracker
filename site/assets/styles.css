@@ -226,6 +226,13 @@ main {
   line-height: 1.05;
 }
 
+.metric-detail {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .metric-status {
   border-left: 6px solid var(--muted);
 }
@@ -268,6 +275,114 @@ main {
 .section-heading p {
   margin-bottom: 0;
   font-size: 0.95rem;
+}
+
+.chart-meta,
+.chart-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.chart-meta {
+  margin: 10px 0 14px;
+}
+
+.chart-note {
+  margin: 14px 0 0;
+}
+
+.chart-note a {
+  color: var(--brand-blue);
+  font-weight: 700;
+}
+
+.stoplight-section > h2 {
+  margin-bottom: 8px;
+}
+
+.stoplight-section > p {
+  margin-bottom: 8px;
+}
+
+#stoplightContrast:not([hidden]) {
+  border-left: 4px solid #b45309;
+  background: #fff7e6;
+  color: #744210;
+  padding: 10px 14px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.stoplight-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.stoplight-table th,
+.stoplight-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.stoplight-table thead {
+  background: var(--bg);
+}
+
+.stoplight-table thead th {
+  font-family: var(--font-heading);
+}
+
+.stoplight-table thead small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.stoplight-badge {
+  display: inline-block;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.stoplight-badge.green {
+  border-color: #a7d7b3;
+  background: #e0f4e5;
+  color: #205c37;
+}
+
+.stoplight-badge.amber {
+  border-color: #e9d28d;
+  background: #fff3ce;
+  color: #795500;
+}
+
+.stoplight-badge.red {
+  border-color: #e6aaaa;
+  background: #fbe4e4;
+  color: #9b2424;
+}
+
+.stoplight-table summary {
+  color: var(--brand-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.stoplight-table details p {
+  max-width: 230px;
+  margin: 8px 0 0;
+  font-size: 0.82rem;
 }
 
 .year-controls {
@@ -376,7 +491,56 @@ main {
 svg {
   display: block;
   width: 100%;
-  height: 380px;
+  height: 430px;
+}
+
+.chart-inline-title {
+  fill: var(--brand-navy);
+  font: 700 18px var(--font-heading);
+}
+
+.chart-inline-meta {
+  fill: var(--muted);
+  font: 12px var(--font-heading);
+}
+
+.chart-data-details {
+  margin-top: 16px;
+}
+
+.chart-data-details summary {
+  color: var(--brand-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chart-data-details summary:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 3px;
+}
+
+.chart-data-table {
+  width: 100%;
+  min-width: 440px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-data-table caption {
+  padding: 10px 0;
+  text-align: left;
+  font-weight: 700;
+}
+
+.chart-data-table th,
+.chart-data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.chart-data-table thead {
+  background: var(--bg);
 }
 
 .grid-line {
@@ -463,8 +627,8 @@ svg {
 .chart-tooltip {
   position: absolute;
   z-index: 3;
-  width: min(220px, calc(100% - 16px));
-  max-height: 260px;
+  width: min(285px, calc(100% - 16px));
+  max-height: 330px;
   overflow: auto;
   border: 1px solid rgba(30, 73, 118, 0.16);
   border-radius: 8px;
@@ -497,9 +661,9 @@ svg {
 }
 
 .chart-tooltip small {
+  grid-column: 2 / -1;
   color: var(--muted);
   font-size: 0.78rem;
-  white-space: nowrap;
 }
 
 .legend {
@@ -521,6 +685,13 @@ svg {
   width: 20px;
   height: 3px;
   border-radius: 999px;
+}
+
+.legend-line-swatch {
+  display: block;
+  flex: none;
+  width: 34px;
+  height: 12px;
 }
 
 .method-section {
@@ -758,6 +929,6 @@ footer a {
   }
 
   svg {
-    height: 330px;
+    height: 380px;
   }
 }
