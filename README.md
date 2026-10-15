@@ -8,32 +8,42 @@ This project is intended for situational awareness, public communication, and re
 
 ## What the tracker measures
 
-The tracker summarizes recent mpox case activity in NYC through five outputs:
+The tracker summarizes recent mpox case activity in NYC through six outputs:
 
 - Reported cases: public case counts from NYC Health sources, normalized to a daily-equivalent series.
-- Smoothed daily cases: a 14-day Gaussian-smoothed case signal used to reduce reporting noise.
+- Smoothed daily-equivalent cases: a 14-day Gaussian-smoothed display signal used to reduce reporting noise; current weekly counts are apportioned across days only for this and the cumulative view.
 - Cumulative cases: year-to-date cumulative cases for each calendar year.
-- Spread risk index: a directional indicator of whether smoothed case activity is increasing or decreasing.
-- Case activity stoplight: three descriptive weekly-count comparisons for recent level, recent direction, and the same period last year.
+- Weekly case growth trend: an eight-week log-linear estimate of weekly percentage change in reported case counts, recalculated daily where genuine daily reports exist and otherwise at completed reporting weeks.
+- Observed-daily case growth index: a legacy historical field retained in the data feed for compatibility, but no longer shown as a separate dashboard section.
+- Case activity stoplight: the growth pace plus three descriptive weekly-count comparisons for recent level, 4-week versus 13-week momentum, and the same period last year.
 
-The spread risk index is the main headline signal. It is best read as a momentum indicator, not as an estimate of individual exposure risk, transmissibility, or health system burden.
+The weekly growth trend describes recent change, not overall case activity. A slowing trend can coexist with elevated case counts, and neither growth measure estimates individual exposure risk, transmissibility, or health system burden.
 The stoplight is also descriptive: higher reported case counts are unfavorable, but its colors are not calibrated probabilities or personal medical risk categories.
+The top summary shows the percentage of current stoplight indicators marked red, with the count and denominator. It is computed from the validated stoplight rows on each data pull; if the feed is unavailable or stale, the percentage is withheld rather than shown as zero.
 
-Both charts carry their metric, selected years and months, and full latest source date inside the chart area for screenshots. Each chart also has an expandable table of the plotted values, available without hover to keyboard and touch users.
+All charts carry their metric, selected years and months, and full latest source date inside the chart area for screenshots. Each chart also has an expandable table of the plotted values, available without hover to keyboard and touch users. The year and month controls apply to every chart. The default view selects the current and prior year, from January through the viewer's current calendar month; 2022 remains available through the year filter because its outbreak-scale counts otherwise compress recent-year trends.
 
 ## Weekly case activity stoplight
 
-The build computes the stoplight directly from the current NYC Health weekly case rows, before they are distributed into daily equivalents. `risk_data.json` and `summary.json` both publish a versioned `case_stoplight` object with the source URL, latest week, comparison week, three rows, and an explanation if the source is unavailable. Each row includes its color and value now, the color and value four weeks earlier, its threshold rule, and the week when its current color began. Clients should display those fields rather than reimplementing the thresholds.
+The build computes all four stoplight rows from the current NYC Health weekly case rows, before they are distributed into daily equivalents. The first row is the eight-week weekly case growth trend; the others show recent level, momentum, and year-earlier comparison. `risk_data.json` and `summary.json` both publish a version 3 `case_stoplight` object with the source URL, latest week, comparison week, four rows, and an explanation if the source is unavailable. Each row includes its color and value now, the color and value four weeks earlier, its threshold rule, and the date when its current color began. Clients should display the published fields rather than reimplementing the thresholds.
+
+`risk_data.json` publishes `case_growth_series` for the hybrid growth chart and `case_activity_series` for the completed-week stoplight and other weekly charts. For genuine daily sources, the growth chart fits eight non-overlapping seven-day totals ending at each observed day; for the original NYC weekly source, it fits eight completed reported weeks. Each growth point identifies its source frequency. The weekly activity history also contains trailing four-week cases, four- and 13-week weekly averages, momentum percentage, and year-over-year percentage. Missing-source windows and comparisons without complete coverage are not plotted. A zero year-earlier total yields no percentage point on that chart; the table uses its documented count-based exception. Percentage comparisons after very small baselines may be volatile, so read them alongside the underlying counts.
 
 A reporting week ending today or later is excluded because it may still be in progress. If the latest completed week is more than 14 days old, the stoplight rows are withheld; consumers also check age so an older published file cannot continue to display a current-looking color. The year-over-year rule treats a zero comparison baseline separately: one to four new cases are amber, and five or more are red.
 
 The build expects the reviewed NYC Health Datawrapper chart ID `k45Nw` on the official mpox page and resolves its latest version automatically. If NYC replaces the chart, the build fails for source review instead of silently switching to another matching dataset. An intentional migration can use `MPOX_CURRENT_WEEKLY_CHART_ID` after the new chart is checked.
 
-- Recent level: four-week total below 15 is green, 15–39 amber, and 40 or more red.
-- Recent direction: latest four weeks versus the preceding four; at least 50% and five cases higher is red, an increase of at least two cases is amber, otherwise green.
+- Weekly growth trend: fit a straight line to `log(1 + seven-day cases)` over eight consecutive, non-overlapping seven-day blocks and convert its slope to a percent change per week. In daily-source years the window rolls forward one day at a time; in weekly-source years it advances one reporting week. Saturday-ending daily-source fits match the completed-week calculation. At most +5% is green, above +5% is amber, and above +15% is red only if the latest four-week total is at least 15 cases. The added one case stabilizes zero-count weeks, so this is a descriptive trend, not a literal incidence-rate estimate.
+- Recent level: four-week total below 15 is green, 15–59 amber, and 60 or more red.
+- Momentum: trailing four-week weekly average versus trailing 13-week weekly average; increases of 15% or less (and all declines) are green, increases above 15% through 40% amber, and increases above 40% red. A larger decline is favorable because higher case activity is unfavorable.
 - Versus last year: trailing 13-week total versus the 13 weeks ending 52 weeks earlier; at least 20% lower is green, more than 20% higher red, otherwise amber.
 
-These thresholds are pragmatic display rules, not validated public-health alert levels. The build withholds all three rows when weekly dates or counts are invalid, reporting weeks are missing or duplicated, or there is insufficient history for the four-weeks-ago year comparison.
+These thresholds are pragmatic display rules, not validated public-health alert levels. The build withholds all four rows when weekly dates or counts are invalid, reporting weeks are missing or duplicated, or there is insufficient history for the four-weeks-ago year comparison.
+The [retrospective weekly-growth check](docs/growth-backtest.md) compares six- and eight-week fits against the 2022 outbreak and quieter years. Growth and momentum are correlated views of the same case counts, so the share of indicators marked red is not a probability or a count of independent signals.
+
+The weekly activity feed also contains weekly counts, four- and 13-week rolling averages, momentum percentage, and year-over-year percentage for the charts. Comparison charts shade the numeric thresholds; the weekly growth chart notes that red in the stoplight additionally requires 15 recent cases. The momentum components chart shows the most recent selected year and shares the page's month filter. Year-over-year percentages are omitted when the earlier total is zero; the table uses its separate zero-baseline count rule.
+Rolling averages and comparisons are calculated on the full dated series before the year and month display filters are applied, so the first visible point can use preceding weeks outside the selected view.
+For the 2022 outbreak onset, dates before the first NYC Health daily case on May 19 are treated as zero-case days in these rolling windows. This lets the 2022 momentum chart begin with the first visible reporting week rather than waiting until August for 13 post-onset weeks. Later missing-source dates are not treated as zeroes. Early percentage comparisons can be especially volatile because the longer-window average is close to zero.
 
 ## Data sources
 
@@ -105,9 +115,9 @@ This reduces noise from irregular reporting while retaining short-term changes. 
 
 The implementation does not require SciPy; it computes normalized Gaussian weights directly in `src/mpox_tracker/model.py`.
 
-### 5. Compute the spread risk index
+### 5. Compute the historical observed-daily growth index
 
-The spread risk index is based on the day-to-day change in smoothed log case activity:
+The separate historical daily index is based on the day-to-day change in smoothed log case activity:
 
 ```text
 log_signal_t = gaussian_rolling_mean(log(1 + cases_t))
@@ -121,15 +131,15 @@ Interpretation:
 - Negative values mean smoothed case activity is declining.
 - Values near zero mean the smoothed signal is roughly flat.
 - Positive values mean smoothed case activity is increasing.
-- Larger positive values indicate faster growth in the smoothed signal.
+- Larger positive values indicate faster growth in the smoothed signal, not higher overall case activity by themselves.
 
-This is a descriptive momentum index. It is not an Rt estimate, incidence rate, forecast, probability of infection, or official risk classification.
+This series requires a complete 14-day window of observed daily-source records and is suppressed in weekly-only reporting years. It is not used for the current stoplight. Neither it nor the weekly growth trend is an Rt estimate, incidence rate, forecast, probability of infection, or official risk classification.
 
-### 6. Assign risk bands
+### 6. Assign historical daily-index bands
 
-The dashboard maps the numeric index to bands:
+The data feed retains these legacy bands for compatibility; the dashboard no longer displays the separate daily-index section:
 
-| Spread risk index | Band |
+| Case growth index | Band |
 | --- | --- |
 | `< 0` | Very Low |
 | `0 to < 0.5` | Low |
@@ -137,19 +147,19 @@ The dashboard maps the numeric index to bands:
 | `1.0 to < 1.5` | Moderate-High |
 | `>= 1.5` | High |
 
-These thresholds are pragmatic display ranges for a public dashboard. They should be interpreted alongside the underlying case counts and source recency.
+These thresholds are pragmatic historical display ranges, not validated public-health alert levels.
 
 ### 7. Align years for seasonal charts
 
 For year-over-year charts, dates are aligned by month and day. February 29 is omitted so leap years and non-leap years share the same comparison axis.
 
-The seasonal view is for visual comparison only. The spread risk index itself is computed on the continuous daily time series before this month-day alignment is applied.
+The seasonal view is for visual comparison only. The historical observed-daily index is computed on the continuous daily time series before this month-day alignment is applied.
 
 ### 8. Suppress January 2024 risk-index values
 
 January 2024 risk-index values are intentionally published as `null`.
 
-The source data do not show a single clearly erroneous record. However, the index is unusually sensitive during this low-count period, likely because small absolute changes around reporting transitions can create outsized movement after log transformation and smoothing. The dashboard therefore suppresses the January 2024 index conservatively while still showing the underlying case series.
+The source data do not show a single clearly erroneous record. However, the index is unusually sensitive during this low-count period, likely because small absolute changes around reporting transitions can create outsized movement after log transformation and smoothing. The data feed therefore suppresses the January 2024 index conservatively while retaining the underlying case series.
 
 ## Practitioner interpretation
 

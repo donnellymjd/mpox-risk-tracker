@@ -80,10 +80,10 @@ def test_build_seasonal_omits_feb_29() -> None:
 def test_build_seasonal_uses_continuous_context_across_years() -> None:
     cases = pd.DataFrame(
         {
-            "date": pd.to_datetime(["2024-12-31", "2025-01-01", "2025-01-02"]),
-            "cases": [4.0, 4.0, 4.0],
-            "source": ["test", "test", "test"],
-            "year": [2024, 2025, 2025],
+            "date": pd.date_range("2024-12-15", "2025-01-02", freq="D"),
+            "cases": [4.0] * 19,
+            "source": ["test"] * 19,
+            "year": [2024] * 17 + [2025] * 2,
         }
     )
 
@@ -91,6 +91,19 @@ def test_build_seasonal_uses_continuous_context_across_years() -> None:
     jan_1 = seasonal.loc[seasonal["date"] == pd.Timestamp("2025-01-01")].iloc[0]
 
     assert pd.notna(jan_1["risk_index"])
+
+
+def test_daily_growth_is_withheld_from_synthetic_weekly_days() -> None:
+    dates = pd.date_range("2024-12-01", "2025-01-31", freq="D")
+    cases = pd.DataFrame({
+        "date": dates,
+        "cases": [1.0] * len(dates),
+        "source": ["daily" if date.year == 2024 else "current weekly" for date in dates],
+        "year": dates.year,
+    })
+    seasonal = build_seasonal(cases)
+    assert pd.notna(seasonal.loc[seasonal["date"] == pd.Timestamp("2024-12-31"), "risk_index"]).all()
+    assert seasonal.loc[seasonal["year"] == 2025, "risk_index"].isna().all()
 
 
 def test_build_seasonal_nulls_january_2024_risk_indicator() -> None:
@@ -134,6 +147,8 @@ def test_payload_exports_chart_styling_contract() -> None:
 
     payload = build_payload(cases, seasonal, sources=[])
 
+    assert "case_growth_series" in payload
+    assert payload["case_growth_series"][0]["frequency"] == "daily"
     assert payload["styling"] == export_styling()
     assert payload["styling"]["version"] == 1
     assert payload["styling"]["yearColors"]["2026"] == "#d55e00"

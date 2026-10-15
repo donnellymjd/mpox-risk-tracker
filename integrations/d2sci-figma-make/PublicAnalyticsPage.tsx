@@ -70,6 +70,20 @@ const DEFAULT_STYLING: Styling = {
   },
 };
 
+const YEAR_LINE_PATTERNS = [
+  { dash: undefined, label: "solid" },
+  { dash: "10 4", label: "long dash" },
+  { dash: "4 3", label: "short dash" },
+  { dash: "10 3 2 3", label: "dash-dot" },
+  { dash: "2 3", label: "dotted" },
+  { dash: "14 3 3 3", label: "long-short dash" },
+];
+
+function linePatternForYear(year: number) {
+  const index = ((year - 2022) % YEAR_LINE_PATTERNS.length + YEAR_LINE_PATTERNS.length) % YEAR_LINE_PATTERNS.length;
+  return YEAR_LINE_PATTERNS[index];
+}
+
 interface StylingPayload {
   yearColors?: Record<string, string>;
   riskBands?: Array<{
@@ -174,6 +188,26 @@ interface SeriesRow {
   source?: string;
 }
 
+interface ChartPoint {
+  date: string;
+  year: number;
+  month_day: string;
+  day_index: number;
+  cases?: number | null;
+  weekly_cases?: number | null;
+  risk_index?: number | null;
+  cumulative_cases?: number | null;
+  four_week_cases?: number | null;
+  four_week_average?: number | null;
+  thirteen_week_average?: number | null;
+  momentum_percent?: number | null;
+  weekly_growth_percent?: number | null;
+  year_over_year_percent?: number | null;
+  frequency?: "daily" | "weekly";
+}
+
+type ChartField = "risk_index" | "cumulative_cases" | "four_week_cases" | "weekly_growth_percent" | "momentum_percent" | "year_over_year_percent";
+
 interface RiskBand {
   label: string;
   min: number | null;
@@ -197,6 +231,9 @@ interface TrackerData {
   summary: {
     risk_index: number | null;
     risk_band: string | null;
+    weekly_growth_percent: number | null;
+    weekly_growth_color: "green" | "amber" | "red" | null;
+    weekly_growth_label: string | null;
     smoothed_daily_cases: number | null;
     cumulative_cases_current_year: number | null;
     cases_last_28_days: number | null;
@@ -212,10 +249,12 @@ interface TrackerData {
   styling?: StylingPayload;
   notes?: string;
   case_stoplight?: CaseStoplight;
+  case_activity_series?: ChartPoint[];
+  case_growth_series?: ChartPoint[];
 }
 
 type StoplightColor = "green" | "amber" | "red";
-type StoplightKey = "level" | "momentum" | "yearOverYear";
+type StoplightKey = "growthIndicator" | "level" | "momentum" | "yearOverYear";
 
 interface StoplightReading {
   color: StoplightColor;
@@ -247,8 +286,10 @@ const STOPLIGHT_COLORS: Record<StoplightColor, { label: string; className: strin
 };
 
 function validCaseStoplight(value: CaseStoplight | undefined): value is CaseStoplight {
-  if (!value || value.version !== 1 || typeof value.as_of !== "string" ||
-      typeof value.four_weeks_ago_date !== "string" || !Array.isArray(value.rows) || value.rows.length !== 3) return false;
+  if (!value || (value.version !== 1 && value.version !== 2 && value.version !== 3) || typeof value.as_of !== "string" ||
+      typeof value.four_weeks_ago_date !== "string" || !Array.isArray(value.rows) ||
+      value.rows.length !== (value.version >= 2 ? 4 : 3) ||
+      (value.version >= 2 && value.rows[0]?.key !== "growthIndicator")) return false;
   const ageDays = (Date.now() - Date.parse(`${value.as_of}T00:00:00Z`)) / 86_400_000;
   if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays > 14) return false;
   const colors = new Set(["green", "amber", "red"]);
@@ -267,6 +308,10 @@ function StoplightTable({ data }: { data: TrackerData }) {
     </div>
   );
   const rows = stoplight.rows;
+  const hasGrowthRow = stoplight.version >= 2;
+  const hasWeeklyGrowth = stoplight.version === 3;
+  const slowGrowthWithElevatedCounts = hasGrowthRow && rows[0].reading.color === "green" &&
+    rows.some((row) => (row.key === "level" || row.key === "momentum") && row.reading.color === "red");
   const fourWeeksAgoDate = stoplight.four_weeks_ago_date;
 
   return (
@@ -275,10 +320,11 @@ function StoplightTable({ data }: { data: TrackerData }) {
         <div className="border-b border-brand-gray/20 p-4 sm:p-6">
           <h2 id="case-stoplight-heading" className="brand-navy mb-2">NYC Mpox Case Activity Stoplight</h2>
           <p className="text-sm text-gray-700">
-            Reported weekly cases through {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. Three views of case activity: recent level, recent direction, and comparison with last year. Higher case counts are unfavorable.
+            NYC Health data through {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. {hasWeeklyGrowth ? "Four views of case activity: the weekly growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : hasGrowthRow ? "Four views of case activity: the prior daily growth indicator, recent case level, momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : "Three views of case activity: recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts are unfavorable."}
           </p>
+          {slowGrowthWithElevatedCounts && <p className="mt-2 border-l-4 border-amber-600 bg-amber-50 p-3 text-sm text-amber-950">Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.</p>}
           <p className="mt-2 text-xs text-gray-600">
-            Source: <a href={stoplight.source_url ?? "https://www.nyc.gov/site/doh/health/health-topics/mpox.page"} target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health weekly mpox cases</a>; stoplight calculations by D²Sci in the upstream tracker. Open Why? for the rule and last color change.
+            Source: <a href={stoplight.source_url ?? "https://www.nyc.gov/site/doh/health/health-topics/mpox.page"} target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health mpox cases</a>; {hasWeeklyGrowth ? "weekly growth trend" : "case activity"} and stoplight calculations by D²Sci in the upstream tracker. Open Why? for the rule and last color change.
           </p>
           <p className="mt-1 text-xs text-gray-600 sm:hidden">Scroll the table sideways for the comparison and details.</p>
         </div>
@@ -289,7 +335,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
               <th scope="col" className="p-4 font-semibold">Dimension</th>
               <th scope="col" className="p-4 font-semibold">Stoplight</th>
               <th scope="col" className="p-4 font-semibold">Latest</th>
-              <th scope="col" className="p-4 font-semibold">Four weeks ago <span className="block text-xs font-normal">Week ending {fmtDate(`${fourWeeksAgoDate}T00:00:00Z`)}</span></th>
+              <th scope="col" className="p-4 font-semibold">Four weeks ago <span className="block text-xs font-normal">As of {fmtDate(`${fourWeeksAgoDate}T00:00:00Z`)}</span></th>
               <th scope="col" className="p-4 font-semibold">Details</th>
             </tr>
           </thead>
@@ -325,7 +371,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
           </table>
         </div>
         <p className="border-t border-brand-gray/20 px-4 py-3 text-xs text-gray-600 sm:px-6">
-          Colors are descriptive monitoring rules, not calibrated probabilities or personal medical risk. The separate growth-index band measures a shorter-term signal.
+          Colors are descriptive monitoring rules, not calibrated probabilities or personal medical risk. {hasWeeklyGrowth ? "Weekly growth and momentum use overlapping case counts, so the four indicators are not independent." : hasGrowthRow ? "The prior daily growth indicator and momentum use different time windows." : "The separate growth-index band measures a shorter-term signal."}
         </p>
       </div>
     </div>
@@ -368,17 +414,10 @@ interface MonthRange {
 // Day-of-year (non-leap) for May 18, the first date the 2022 line should render.
 const Y2022_START_DAY = 138;
 
-function monthIndexFromDate(isoDate: string) {
-  const date = new Date(`${isoDate}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return new Date().getUTCMonth();
-  return date.getUTCMonth();
-}
-
-function defaultMonthRange(data: TrackerData): MonthRange {
-  const monthIndex = monthIndexFromDate(data.latest_data_date);
+function defaultMonthRange(): MonthRange {
   return {
-    startMonthIndex: Math.max(0, monthIndex - 1),
-    endMonthIndex: Math.min(MONTH_TICKS.length - 1, monthIndex + 1),
+    startMonthIndex: 0,
+    endMonthIndex: new Date().getMonth(),
   };
 }
 
@@ -393,13 +432,14 @@ function dayRange(monthRange: MonthRange) {
 function buildChartData(
   data: TrackerData,
   years: number[],
-  field: "risk_index" | "cumulative_cases",
+  field: ChartField,
   monthRange: MonthRange,
+  sourceRows: ChartPoint[] = data.series,
 ) {
   const wanted = new Set(years);
   const range = dayRange(monthRange);
   const byDay = new Map<number, any>();
-  data.series.forEach((row) => {
+  sourceRows.forEach((row) => {
     if (!wanted.has(row.year)) return;
     if (row.day_index < range.start || row.day_index > range.end) return;
     if (row.year === 2022 && row.day_index < Y2022_START_DAY) return;
@@ -410,40 +450,48 @@ function buildChartData(
       });
     }
     byDay.get(row.day_index)![`y${row.year}`] = row[field];
-    byDay.get(row.day_index)![`cases${row.year}`] = row.cases;
+    byDay.get(row.day_index)![`cases${row.year}`] = row.weekly_cases ?? row.cases;
   });
   return Array.from(byDay.values()).sort((a, b) => a.day_index - b.day_index);
 }
 
-function ChartTooltip({ active, payload, data, field }: any) {
-  if (!active || !payload || payload.length === 0) return null;
-  const first = payload[0]?.payload;
-  if (!first) return null;
+function ChartTooltip({ active, label, field, hoverRowsByYear, weekly, styling }: any) {
+  const dayIndex = Number(label);
+  if (!active || !Number.isFinite(dayIndex)) return null;
   const formatter = (v: number | null | undefined) =>
     v === null || v === undefined
       ? "--"
       : field === "risk_index"
         ? v.toFixed(2)
-        : v.toLocaleString();
+        : field.endsWith("_percent")
+          ? `${v > 0 ? "+" : ""}${v.toLocaleString()}%`
+          : v.toLocaleString();
+  const observations = Array.from((hoverRowsByYear as Map<number, ChartPoint[]>).entries())
+    .sort(([a], [b]) => b - a)
+    .map(([year, rows]) => {
+      const tolerance = weekly && rows[0]?.frequency !== "daily" ? 3 : 0;
+      const row = rows.filter((candidate) => Math.abs(candidate.day_index - dayIndex) <= tolerance)
+        .sort((a, b) => Math.abs(a.day_index - dayIndex) - Math.abs(b.day_index - dayIndex) || b.day_index - a.day_index)[0] ?? null;
+      return { year, row };
+    });
+  if (observations.every(({ row }) => !row)) return null;
+  const dayLabel = new Date(Date.UTC(2001, 0, dayIndex)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   return (
-    <div className="bg-white border border-brand-gray/40 rounded-md shadow-md px-3 py-2 text-xs">
-      <div className="font-semibold brand-navy mb-1">{first.month_day}</div>
-      {payload
-        .slice()
-        .sort((a: any, b: any) => Number(b.name) - Number(a.name))
-        .map((p: any) => {
-          const year = Number(p.name);
-          const cases = first[`cases${year}`];
+    <div className="max-w-[285px] rounded-md border border-brand-gray/40 bg-white px-3 py-2 text-xs shadow-md">
+      <div className="font-semibold brand-navy mb-1">{weekly ? `Around ${dayLabel}` : dayLabel}</div>
+      {observations.map(({ year, row }) => {
+          const cases = row?.weekly_cases ?? row?.cases;
+          const value = row?.[field as ChartField];
           return (
-            <div key={p.name} className="flex items-center gap-2">
+            <div key={year} className="mt-1.5 grid grid-cols-[12px_1fr_auto] items-center gap-x-2">
               <span
                 className="inline-block w-3 h-3 rounded-sm"
-                style={{ background: p.color }}
+                style={{ background: styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR }}
               />
               <span className="brand-navy">{year}:</span>
-              <span className="font-medium">{formatter(p.value)}</span>
-              <span className="text-gray-500">
-                ({cases === null || cases === undefined ? "--" : cases} cases)
+              <span className="font-medium">{row ? formatter(value) : "—"}</span>
+              <span className="col-start-2 col-end-4 text-gray-500">
+                {row ? `${weekly ? `${row.frequency === "daily" ? "7 days ending" : "Week ending"} ${fmtDate(`${row.date}T00:00:00Z`)} · ` : ""}${cases ?? "--"} ${field === "risk_index" ? "observed daily cases" : field === "cumulative_cases" ? "daily-equivalent cases" : row.frequency === "daily" ? "cases in trailing 7 days" : `case${cases === 1 ? "" : "s"} that week`}` : "No nearby observation"}
               </span>
             </div>
           );
@@ -460,6 +508,83 @@ function ChartMark() {
   );
 }
 
+function PatternLegend({ items }: { items: ReadonlyArray<{ name: string; color: string; dash?: string; pattern: string }> }) {
+  return <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-gray-700">
+    {items.map((item) => <span key={item.name} className="inline-flex items-center gap-1.5" aria-label={`${item.name}, ${item.pattern} line`}>
+      <svg width="34" height="12" aria-hidden="true"><line x1="1" x2="33" y1="6" y2="6" stroke={item.color} strokeWidth="2.8" strokeDasharray={item.dash} strokeLinecap="round" /></svg>
+      {item.name}
+    </span>)}
+  </div>;
+}
+
+const ACTIVITY_BANDS: Record<string, StyledRiskBand[]> = {
+  weekly_growth_percent: [
+    { label: "Green ≤+5%", min: null, max: 5, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Amber +5–15%", min: 5, max: 15, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Red >+15%*", min: 15, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
+  ],
+  four_week_cases: [
+    { label: "Green <15", min: null, max: 15, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Amber 15–59", min: 15, max: 60, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Red ≥60", min: 60, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
+  ],
+  momentum_percent: [
+    { label: "Green ≤+15%", min: null, max: 15, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Amber +15–40%", min: 15, max: 40, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Red >+40%", min: 40, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
+  ],
+  year_over_year_percent: [
+    { label: "Green ≤−20%", min: null, max: -20, color: "#d8e8df", textColor: "#256d4a" },
+    { label: "Amber −20–+20%", min: -20, max: 20, color: "#fff0bf", textColor: "#8a6300" },
+    { label: "Red >+20%", min: 20, max: null, color: "#f3b7b2", textColor: "#9a2f29" },
+  ],
+};
+
+function MomentumComponentsChart({ data, selectedYears, monthRange }: { data: TrackerData; selectedYears: number[]; monthRange: MonthRange }) {
+  const year = selectedYears.at(-1);
+  const range = dayRange(monthRange);
+  // The upstream feed calculates rolling averages across the full history;
+  // these filters affect display only, including at month/year boundaries.
+  const rows = (data.case_activity_series ?? []).filter((row) => row.year === year && (row.year !== 2022 || row.day_index >= Y2022_START_DAY) && row.day_index >= range.start && row.day_index <= range.end);
+  const latestWeek = rows.at(-1);
+  const lines = [
+    { key: "weekly_cases", name: "Weekly cases", color: "#2876d2", dash: undefined, pattern: "solid" },
+    { key: "four_week_average", name: "4-week average", color: "#ee6536", dash: "10 4", pattern: "long dash" },
+    { key: "thirteen_week_average", name: "13-week average", color: "#19a974", dash: "2 3", pattern: "dotted" },
+  ] as const;
+  return (
+    <div className="w-full">
+      <div className="rounded-md border border-brand-gray/30 bg-white p-2">
+        <div className="ml-2 text-sm font-semibold brand-navy">NYC Mpox Weekly Cases and Rolling Averages — {year ?? "No year selected"}</div>
+        <div className="ml-2 text-xs text-gray-600">NYC Health · Months: {MONTH_TICKS[monthRange.startMonthIndex].label}–{MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending {fmtDate(`${data.latest_data_date}T00:00:00Z`)}</div>
+        <div className="ml-2 text-xs text-gray-500">Y-axis: cases per week · X-axis: calendar month and day at week endings</div>
+        <div style={{ height: 360 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={rows} margin={{ top: 16, right: 24, bottom: 24, left: 12 }}>
+              <CartesianGrid stroke="#e5e7eb" vertical={false} />
+              <XAxis dataKey="day_index" type="number" domain={[range.start, range.end]} ticks={MONTH_TICKS.filter((m) => m.day >= range.start && m.day <= range.end).map((m) => m.day)} tickFormatter={(d) => MONTH_TICKS.find((m) => m.day === d)?.label ?? ""} tick={{ fontSize: 11 }} />
+              <YAxis domain={[0, "auto"]} tick={{ fontSize: 11 }} />
+              <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? "Week ending"} formatter={(value: any, name: any) => [Number(value).toFixed(2), String(name)]} />
+              <Legend verticalAlign="bottom" content={() => <PatternLegend items={lines} />} />
+              {lines.map((line) => <Line key={line.key} dataKey={line.key} name={line.name} stroke={line.color} strokeDasharray={line.dash} strokeWidth={line.key === "weekly_cases" ? 2.6 : 3} dot={false} connectNulls={false} isAnimationActive={false} />)}
+              {latestWeek && <ReferenceLine x={latestWeek.day_index} stroke="#0f172a" strokeDasharray="4 4" />}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <ChartMark />
+      </div>
+      <details className="mt-4 text-sm">
+        <summary className="cursor-pointer brand-blue font-semibold">View NYC Mpox weekly cases and rolling averages as a table</summary>
+        <div className="mt-2 overflow-x-auto"><table className="w-full min-w-[440px] border-collapse text-left text-xs tabular-nums">
+          <caption className="py-2 text-left font-semibold brand-navy">NYC Mpox weekly cases, 4-week average and 13-week average — {year ?? "no year selected"}. NYC Health data through {fmtDate(`${data.latest_data_date}T00:00:00Z`)}. Cases per week.</caption>
+          <thead><tr><th scope="col">Week ending</th>{lines.map((line) => <th key={line.key} scope="col">{line.name}</th>)}</tr></thead>
+          <tbody>{rows.map((row) => <tr key={row.date}><th scope="row">{row.date}</th>{lines.map((line) => { const value = row[line.key]; return <td key={line.key}>{value == null ? "—" : value.toFixed(2)}</td>; })}</tr>)}</tbody>
+        </table></div>
+      </details>
+    </div>
+  );
+}
+
 function TrackerChart({
   data,
   styling,
@@ -468,19 +593,42 @@ function TrackerChart({
   field,
   showRiskBands,
   yLabel,
+  sourceRows,
+  title,
 }: {
   data: TrackerData;
   styling: Styling;
   selectedYears: number[];
   monthRange: MonthRange;
-  field: "risk_index" | "cumulative_cases";
+  field: ChartField;
   showRiskBands?: boolean;
   yLabel: string;
+  sourceRows?: ChartPoint[];
+  title?: string;
 }) {
   const chartData = useMemo(
-    () => buildChartData(data, selectedYears, field, monthRange),
-    [data, selectedYears, field, monthRange],
+    () => buildChartData(data, selectedYears, field, monthRange, sourceRows),
+    [data, selectedYears, field, monthRange, sourceRows],
   );
+  const plottedYears = selectedYears.filter((year) => chartData.some((row) => {
+    const value = row[`y${year}`];
+    return typeof value === "number" && Number.isFinite(value);
+  }));
+  const frequencyByYear = Object.fromEntries(plottedYears.map((year) => [year,
+    field === "weekly_growth_percent" ? (sourceRows ?? []).find((row) => row.year === year)?.frequency ?? "weekly" : null,
+  ]));
+  const hoverRowsByYear = useMemo(() => {
+    const range = dayRange(monthRange);
+    const rowsByYear = new Map<number, ChartPoint[]>();
+    for (const year of selectedYears) {
+      const rows = (sourceRows ?? data.series).filter((row) => row.year === year &&
+        row.day_index >= range.start && row.day_index <= range.end &&
+        (year !== 2022 || row.day_index >= Y2022_START_DAY) &&
+        typeof row[field] === "number" && Number.isFinite(row[field]));
+      if (rows.length) rowsByYear.set(year, rows);
+    }
+    return rowsByYear;
+  }, [data.series, sourceRows, selectedYears, field, monthRange]);
 
   const allValues = chartData
     .flatMap((row) =>
@@ -517,6 +665,9 @@ function TrackerChart({
     return ticks;
   };
 
+  const bands = showRiskBands ? styling.riskBands : ACTIVITY_BANDS[field] ?? [];
+  if (bands.length && bands[0].max !== null) yMin = Math.min(yMin, bands[0].max - 1);
+  if (bands.length) yMax = Math.max(yMax, (bands.at(-1)?.min ?? 0) + 1);
   const yTicks = niceTicks(yMin, yMax, 6);
   yMin = yTicks[0];
   yMax = yTicks[yTicks.length - 1];
@@ -524,15 +675,14 @@ function TrackerChart({
   const tickDecimals = tickStep >= 1 ? 0 : tickStep >= 0.1 ? 1 : 2;
   const range = dayRange(monthRange);
 
-  const latest = data.series.find(
+  const latest = (sourceRows ?? data.series).find(
     (r) => r.year === data.current_year && r.date === data.latest_data_date,
   );
 
-  const bands = showRiskBands ? styling.riskBands : [];
-  const chartTitle = field === "risk_index"
+  const chartTitle = title ?? (field === "risk_index"
     ? "NYC Mpox Case Growth Indicator"
-    : "NYC Mpox Cumulative Reported Cases";
-  const chartContext = `NYC Health · Years: ${selectedYears.length ? selectedYears.join(", ") : "none"} · Months: ${MONTH_TICKS[monthRange.startMonthIndex].label}–${MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}`;
+    : "NYC Mpox Cumulative Reported Cases");
+  const chartContext = `NYC Health · Years plotted: ${plottedYears.length ? plottedYears.map((year) => `${year}${frequencyByYear[year] ? ` ${frequencyByYear[year]}` : ""}`).join(", ") : "none"} · Months: ${MONTH_TICKS[monthRange.startMonthIndex].label}–${MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}`;
 
   return (
     <div className="w-full">
@@ -557,7 +707,7 @@ function TrackerChart({
                 id={`band-${band.label}-${i}`}
                 y1={Math.max(from, yMin)}
                 y2={Math.min(to, yMax)}
-                fill={styling.bandStyles[band.label]?.bg ?? FALLBACK_BAND_BG}
+                fill={band.color ?? styling.bandStyles[band.label]?.bg ?? FALLBACK_BAND_BG}
                 fillOpacity={0.6}
                 ifOverflow="hidden"
               />
@@ -587,15 +737,15 @@ function TrackerChart({
           />
           <Tooltip
             key="tooltip"
-            content={<ChartTooltip data={data} field={field} />}
+            content={<ChartTooltip field={field} hoverRowsByYear={hoverRowsByYear} weekly={!!sourceRows} styling={styling} />}
             cursor={{ stroke: "#94a3b8", strokeDasharray: "3 3" }}
           />
           <Legend
             key="legend"
             verticalAlign="bottom"
-            wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+            content={() => <PatternLegend items={plottedYears.map((year) => ({ name: `${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`, color: styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR, dash: linePatternForYear(year).dash, pattern: linePatternForYear(year).label }))} />}
           />
-          {latest &&
+          {latest && typeof latest[field] === "number" && Number.isFinite(latest[field]) &&
             selectedYears.includes(data.current_year) &&
             latest.day_index >= range.start &&
             latest.day_index <= range.end && (
@@ -612,18 +762,19 @@ function TrackerChart({
               }}
             />
           )}
-          {selectedYears.map((year) => (
+          {plottedYears.map((year) => (
             <Line
               key={year}
               id={`line-${year}`}
               type="monotone"
               dataKey={`y${year}`}
-              name={String(year)}
+              name={`${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`}
               stroke={styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR}
-              strokeWidth={year === data.current_year ? 2.8 : 1.6}
-              strokeOpacity={year === data.current_year ? 1 : 0.8}
-              dot={false}
-              connectNulls={false}
+              strokeDasharray={linePatternForYear(year).dash}
+              strokeWidth={year === data.current_year ? 3.4 : 2.5}
+              strokeOpacity={1}
+              dot={field === "weekly_growth_percent" && frequencyByYear[year] === "weekly" ? { r: 2 } : false}
+              connectNulls={field === "weekly_growth_percent"}
               isAnimationActive={false}
             />
           ))}
@@ -633,7 +784,7 @@ function TrackerChart({
       <ChartMark />
       </div>
       <details className="mt-4 text-sm">
-        <summary className="cursor-pointer brand-blue font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">View {field === "risk_index" ? "case growth" : "cumulative cases"} chart values as a table</summary>
+        <summary className="cursor-pointer brand-blue font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">View {chartTitle} values as a table</summary>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[440px] border-collapse text-left text-xs tabular-nums">
             <caption className="py-2 text-left font-semibold brand-navy">{chartTitle}. NYC Health data through {fmtDate(`${data.latest_data_date}T00:00:00Z`)}. Selected years and months.</caption>
@@ -649,7 +800,7 @@ function TrackerChart({
                   <th scope="row" className="border-b border-brand-gray/20 p-2 font-medium">{row.month_day}</th>
                   {selectedYears.map((year) => {
                     const value = row[`y${year}`] as number | null | undefined;
-                    return <td key={year} className="border-b border-brand-gray/20 p-2">{value === null || value === undefined ? "—" : field === "risk_index" ? value.toFixed(2) : value.toLocaleString()}</td>;
+                    return <td key={year} className="border-b border-brand-gray/20 p-2">{value === null || value === undefined ? "—" : field === "risk_index" ? value.toFixed(2) : field.endsWith("_percent") ? `${value > 0 ? "+" : ""}${value.toLocaleString()}%` : value.toLocaleString()}</td>;
                   })}
                 </tr>
               ))}
@@ -806,10 +957,10 @@ export function PublicAnalyticsPage() {
           (a, b) => a - b,
         );
         const currentYear = d.current_year;
-        const targets = [2022, currentYear - 1, currentYear];
+        const targets = [currentYear - 1, currentYear];
         const defaults = targets.filter((y) => years.includes(y));
         setSelectedYears(new Set(defaults.length ? defaults : years.slice(-3)));
-        setMonthRange(defaultMonthRange(d));
+        setMonthRange(defaultMonthRange());
       })
       .catch((e) => {
         if (cancelled) return;
@@ -843,16 +994,19 @@ export function PublicAnalyticsPage() {
 
   const styling = useMemo(() => mergeStyling(data?.styling), [data?.styling]);
 
-  const band = data?.summary.risk_band || (error ? "Unavailable" : "Loading");
-  const bandBg = styling.bandStyles[band]?.bg ?? FALLBACK_BAND_BG;
-  const bandText = styling.bandStyles[band]?.text ?? FALLBACK_BAND_TEXT;
+  const band = data?.summary.weekly_growth_label || (data || error ? "Weekly trend unavailable" : "Loading");
+  const growthColor = data?.summary.weekly_growth_color;
+  const bandBg = { green: "#d8e8df", amber: "#fff0bf", red: "#f3b7b2" }[growthColor ?? ""] ?? FALLBACK_BAND_BG;
+  const bandText = { green: "#256d4a", amber: "#8a6300", red: "#9a2f29" }[growthColor ?? ""] ?? FALLBACK_BAND_TEXT;
+  const currentStoplight = data && validCaseStoplight(data.case_stoplight) ? data.case_stoplight : null;
+  const redIndicatorCount = currentStoplight?.rows.filter((row) => row.reading.color === "red").length ?? 0;
 
   const cards = [
     {
       icon: <Activity className="h-8 w-8 brand-blue" />,
       title: "Current signal",
       description:
-        "A clear, at-a-glance read of NYC mpox spread risk derived from the latest case reporting — refreshed automatically so the snapshot always reflects current conditions.",
+        "A clear, at-a-glance read of NYC mpox case activity derived from the latest case reporting — refreshed automatically when NYC Health updates its data.",
     },
     {
       icon: <History className="h-8 w-8 brand-teal" />,
@@ -949,7 +1103,7 @@ export function PublicAnalyticsPage() {
               }}
             >
               <div className="text-xs uppercase tracking-wide text-gray-700 mb-1">
-                Growth-index band
+                Weekly case growth trend
               </div>
               <div
                 className="text-2xl font-bold"
@@ -960,13 +1114,13 @@ export function PublicAnalyticsPage() {
             </div>
             <div className="rounded-lg p-5 bg-brand-gray/20 border border-brand-gray/30">
               <div className="text-xs uppercase tracking-wide text-gray-700 mb-1">
-                Risk index
+                Indicators red
               </div>
               <div className="text-2xl font-bold brand-navy">
-                {data?.summary.risk_index !== null &&
-                data?.summary.risk_index !== undefined
-                  ? data.summary.risk_index.toFixed(2)
-                  : "--"}
+                {currentStoplight ? `${Math.round((redIndicatorCount / currentStoplight.rows.length) * 100)}%` : "--"}
+              </div>
+              <div className="text-xs text-gray-600 mt-1">
+                {currentStoplight ? `${redIndicatorCount} of ${currentStoplight.rows.length} current indicators` : "Current case stoplight unavailable"}
               </div>
             </div>
             <div className="rounded-lg p-5 bg-brand-gray/20 border border-brand-gray/30">
@@ -1013,7 +1167,7 @@ export function PublicAnalyticsPage() {
         </div>
       </section>
 
-      {/* Case Growth Indicator chart */}
+      {/* Completed-week growth trend; the controls also apply to the historical daily view. */}
       <section id="indicator" className="py-12 px-4 bg-gray-50">
         <div className="max-w-6xl mx-auto">
           {data && (
@@ -1029,26 +1183,27 @@ export function PublicAnalyticsPage() {
           )}
           <Card>
             <CardContent className="p-4 sm:p-6">
-              <h2 id="growth-chart-heading" className="brand-navy mb-2">NYC Mpox Case Growth Indicator by Calendar Date</h2>
+              <h2 id="growth-chart-heading" className="brand-navy mb-2">NYC Mpox Weekly Case Growth Trend by Calendar Date</h2>
               <p className="text-sm text-gray-700 mb-2">
-                Unitless index of the day-to-day change in smoothed reported cases. Above zero means rising; below zero means falling. Colored bands describe growth, not individual infection risk.
+                Estimated percentage change per week across eight consecutive seven-day blocks. Historical daily sources produce a rolling point each day; weekly-only sources produce a point at each completed week. Positive values mean cases are rising. The stoplight remains weekly and requires at least 15 cases in four weeks for red. Hover shows the actual ending date of each year's seven-day block.
               </p>
           <p className="text-xs text-gray-600 mb-5">
                 {data ? `Source: NYC Health · Years shown: ${selectedYearsArray.length ? selectedYearsArray.join(", ") : "none"} · Months shown: ${MONTH_TICKS[monthRange.startMonthIndex].label}–${MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}` : "Loading source data…"}
               </p>
-              {data ? (
+              {data?.case_stoplight?.version === 3 && (data.case_growth_series ?? data.case_activity_series)?.some((row) => row.weekly_growth_percent !== null && row.weekly_growth_percent !== undefined) ? (
                 <figure aria-labelledby="growth-chart-heading">
                   <TrackerChart
                     data={data}
                     styling={styling}
                     selectedYears={selectedYearsArray}
                     monthRange={monthRange}
-                    field="risk_index"
-                    showRiskBands
-                    yLabel="Case growth index (unitless)"
+                    field="weekly_growth_percent"
+                    sourceRows={data.case_growth_series ?? data.case_activity_series}
+                    title="NYC Mpox Weekly Case Growth Trend"
+                    yLabel="Estimated weekly case growth (%)"
                   />
                   <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                    {styling.riskBands.map((b) => (
+                    {ACTIVITY_BANDS.weekly_growth_percent.map((b) => (
                       <span
                         key={b.label}
                         className="text-xs px-2 py-1 rounded-md border"
@@ -1066,18 +1221,67 @@ export function PublicAnalyticsPage() {
                     </span>
                   </div>
                   <figcaption className="mt-4 text-xs text-gray-600">
-                    Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page" target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health mpox case data</a>; indicator by D²Sci. Recent weekly totals are spread evenly across reporting days before smoothing. X-axis: calendar month and day; each line represents the labeled year.
+                    Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page" target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health mpox case data</a>; eight-week log-linear trend by D²Sci. Daily-source dates use eight non-overlapping trailing seven-day totals and are recalculated daily; weekly-source dates use eight completed weekly totals. The legend labels each year's frequency. X-axis: calendar month and day; Y-axis: estimated percentage change per week. Shading shows rate cutoffs; red in the stoplight additionally requires at least 15 cases in the latest four weeks. This is not a transmission or personal-risk estimate.
                   </figcaption>
                 </figure>
               ) : (
                 <div className="h-[380px] flex items-center justify-center text-gray-400 text-sm">
-                  {error ? "Chart unavailable" : "Loading…"}
+                  {error ? "Chart unavailable" : data ? "Awaiting updated weekly-growth feed" : "Loading…"}
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
       </section>
+
+      {/* Weekly case activity charts; the controls above apply to each chart. */}
+      {([
+        { id: "level-chart-heading", title: "NYC Mpox Recent Case Level by Calendar Date", description: "Reported cases in the trailing four complete weeks, plotted at each week-ending date. Higher counts are unfavorable.", field: "four_week_cases", unit: "Cases in trailing four weeks", note: "Earlier years use daily case reports aggregated by week." },
+        { id: "momentum-chart-heading", title: "NYC Mpox Momentum: Four-Week vs 13-Week Average", description: "Weekly reported cases with their four- and 13-week rolling averages, followed by the percentage difference between those averages. An increase is unfavorable; declines greater than 15% remain green.", field: "momentum_percent", unit: "Percentage difference in weekly averages", note: "The component chart shows the most recent selected year. Rolling averages use preceding weeks outside the visible months. Before the first reported 2022 case on May 19, days are assumed to have zero cases; early 2022 percentages are sensitive to this low comparison level." },
+        { id: "year-comparison-chart-heading", title: "NYC Mpox 13-Week Percentage Change Versus Last Year", description: "Percentage difference between a trailing 13-week case total and the 13 weeks ending 52 weeks earlier. Above zero means more cases than a year earlier.", field: "year_over_year_percent", unit: "Percentage change vs 52 weeks earlier", note: "Zero-baseline comparisons have no plotted percentage; the table separately marks 1–4 new cases amber and 5 or more red." },
+      ] as const).map((chart) => (
+        <section key={chart.field} className="py-12 px-4 bg-white">
+          <div className="max-w-6xl mx-auto">
+            <Card><CardContent className="p-4 sm:p-6">
+              <h2 id={chart.id} className="brand-navy mb-2">{chart.title}</h2>
+              <p className="text-sm text-gray-700 mb-2">{chart.description}</p>
+              <p className="text-xs text-gray-600 mb-5">
+                {data ? `Source: NYC Health · Years shown: ${selectedYearsArray.length ? selectedYearsArray.join(", ") : "none"} · Months shown: ${MONTH_TICKS[monthRange.startMonthIndex].label}–${MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}` : "Loading source data…"}
+              </p>
+              {data?.case_activity_series?.length ? (
+                <figure aria-labelledby={chart.id}>
+                  {chart.field === "momentum_percent" && (
+                    <div className="mb-8">
+                      <h3 className="brand-navy font-semibold mb-2">Weekly cases and rolling averages</h3>
+                      <MomentumComponentsChart data={data} selectedYears={selectedYearsArray} monthRange={monthRange} />
+                      <p className="mt-2 text-xs text-gray-600">Source: NYC Health mpox cases; weekly counts and rolling averages by D²Sci. The year and month controls above apply.</p>
+                      <h3 className="brand-navy font-semibold mt-8 mb-2">Momentum percentage by calendar date</h3>
+                    </div>
+                  )}
+                  <TrackerChart
+                    data={data}
+                    styling={styling}
+                    selectedYears={selectedYearsArray}
+                    monthRange={monthRange}
+                    field={chart.field}
+                    sourceRows={data.case_activity_series}
+                    title={chart.title}
+                    yLabel={chart.unit}
+                  />
+                  <div className="flex flex-wrap gap-2 mt-4 justify-center">
+                    {(ACTIVITY_BANDS[chart.field] ?? []).map((band) => <span key={band.label} className="text-xs px-2 py-1 rounded-md border" style={{ background: band.color, color: band.textColor }}>{band.label}</span>)}
+                  </div>
+                  <figcaption className="mt-4 text-xs text-gray-600">
+                    Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page" target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health mpox cases</a>; weekly comparison by D²Sci. X-axis: calendar month and day at week endings; Y-axis: {chart.unit}. {chart.note} The year and month controls above apply to this chart.
+                  </figcaption>
+                </figure>
+              ) : (
+                <p className="text-sm text-gray-600">{error ? "Chart unavailable while tracker data cannot be loaded." : "Awaiting weekly case-activity history from the upstream tracker."}</p>
+              )}
+            </CardContent></Card>
+          </div>
+        </section>
+      ))}
 
       {/* Cumulative Cases chart */}
       <section className="py-12 px-4 bg-white">
@@ -1118,11 +1322,14 @@ export function PublicAnalyticsPage() {
         <div className="max-w-5xl mx-auto">
           <h2 className="brand-navy mb-4">Method</h2>
           <p className="text-gray-700 mb-4 leading-relaxed">
-            This unofficial tracker fetches public NYC Health mpox case data,
-            smooths daily-equivalent cases with a 14-day Gaussian window, and
-            converts the day-to-day change in smoothed log cases into a
-            normalized spread indicator. Weekly case counts are distributed
-            across their reporting week before smoothing.
+            This unofficial tracker fetches public NYC Health mpox case data.
+            Its weekly growth trend fits eight consecutive seven-day case
+            totals on a log(1 + cases) scale. The chart updates the fit daily
+            where cases are reported daily and weekly where only weekly totals
+            exist. Weekly
+            totals are distributed across reporting days only for the
+            daily-equivalent and cumulative case views, not for the current
+            growth trend.
           </p>
           <p className="text-gray-700 mb-8 leading-relaxed">
             It is intended for situational awareness, not clinical or

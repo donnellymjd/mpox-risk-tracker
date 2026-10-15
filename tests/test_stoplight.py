@@ -4,7 +4,7 @@ from datetime import date
 
 import pandas as pd
 
-from mpox_tracker.stoplight import build_case_stoplight
+from mpox_tracker.stoplight import _growth_reading, build_case_stoplight
 
 
 def test_case_stoplight_exports_current_prior_and_change_dates() -> None:
@@ -14,18 +14,24 @@ def test_case_stoplight_exports_current_prior_and_change_dates() -> None:
         "cases": counts,
     })
 
-    payload = build_case_stoplight(frame, source_url="https://example.org/weekly.csv")
+    payload = build_case_stoplight(frame, source_url="https://example.org/weekly.csv", today=date(2026, 10, 15))
     rows = {row["key"]: row for row in payload["rows"]}
 
-    assert payload["version"] == 1
+    assert payload["version"] == 3
     assert payload["as_of"] == "2026-10-03"
     assert payload["four_weeks_ago_date"] == "2026-09-05"
     assert payload["source_url"] == "https://example.org/weekly.csv"
     assert payload["unavailable_reason"] is None
-    assert rows["level"]["reading"] == {"color": "red", "value": "41 cases / 4 weeks"}
+    assert len(payload["rows"]) == 4
+    assert payload["rows"][0]["key"] == "growthIndicator"
+    assert rows["growthIndicator"]["reading"]["color"] == "red"
+    assert rows["growthIndicator"]["reading"]["value"].endswith("% per week (8-week trend)")
+    assert rows["growthIndicator"]["four_weeks_ago"]["color"] in {"green", "amber", "red"}
+    assert rows["growthIndicator"]["changed_at"] <= "2026-10-03"
+    assert rows["level"]["reading"] == {"color": "amber", "value": "41 cases / 4 weeks"}
     assert rows["level"]["four_weeks_ago"] == {"color": "amber", "value": "16 cases / 4 weeks"}
-    assert rows["level"]["changed_at"] == "2026-10-03"
-    assert rows["momentum"]["reading"] == {"color": "red", "value": "+156% (41 vs 16 cases)"}
+    assert rows["level"]["changed_at"] == "2026-09-05"
+    assert rows["momentum"]["reading"] == {"color": "red", "value": "+99% (10.25 vs 5.15 weekly avg)"}
     assert rows["yearOverYear"]["reading"]["color"] == "green"
     assert rows["yearOverYear"]["reading"]["value"] == "-48% (67 vs 130 cases)"
 
@@ -40,6 +46,40 @@ def test_case_stoplight_hides_status_when_reporting_weeks_are_missing() -> None:
 
     assert payload["rows"] == []
     assert payload["unavailable_reason"] == "The weekly source has missing or duplicate reporting weeks."
+
+
+def test_weekly_growth_colors_include_low_count_safeguard() -> None:
+    assert _growth_reading([10] * 8, 7)["color"] == "green"
+    assert _growth_reading([1, 1, 1, 1, 2, 3, 4, 5], 7)["color"] == "amber"
+    assert _growth_reading([1, 1, 2, 3, 5, 8, 13, 21], 7)["color"] == "red"
+
+
+def test_recent_case_level_boundaries() -> None:
+    from mpox_tracker.stoplight import _reading
+
+    for total, color in [(14, "green"), (15, "amber"), (41, "amber"), (59, "amber"), (60, "red")]:
+        assert _reading([0, 0, 0, total], 3, "level")["color"] == color
+
+
+def test_momentum_thresholds_and_declines() -> None:
+    from mpox_tracker.stoplight import _reading
+
+    assert _reading([0] * 13, 12, "momentum")["color"] == "green"
+    assert _reading([4] * 9 + [0] * 4, 12, "momentum")["color"] == "green"
+    assert _reading([10] * 13, 12, "momentum")["color"] == "green"
+    # Four weeks contribute to the 13-week baseline, so calculate exact
+    # boundaries from integer totals over both windows.
+    assert _reading([17] * 9 + [20] * 4, 12, "momentum")["color"] == "green"
+    assert _reading([16] * 9 + [20] * 4, 12, "momentum")["color"] == "amber"
+    assert _reading([11] * 9 + [20] * 4, 12, "momentum")["color"] == "red"
+
+
+def test_missing_weekly_source_hides_incomplete_stoplight() -> None:
+    dates = pd.date_range(end="2026-10-03", periods=69, freq="7D")
+    frame = pd.DataFrame({"week_ending": dates, "cases": [1] * 69})
+    payload = build_case_stoplight(frame.iloc[0:0], today=date(2026, 10, 15))
+    assert payload["rows"] == []
+    assert "invalid dates or counts" in payload["unavailable_reason"]
 
 
 def test_year_comparison_exact_green_boundary_and_zero_baseline() -> None:

@@ -71,8 +71,8 @@ def main() -> None:
     print(
         "Built mpox tracker through "
         f"{result.payload['latest_data_date']} "
-        f"with {summary['risk_band']} risk "
-        f"(index={summary['risk_index']})."
+        f"with weekly growth {summary['weekly_growth_label']} "
+        f"({summary['weekly_growth_percent']}% per week)."
     )
 
 

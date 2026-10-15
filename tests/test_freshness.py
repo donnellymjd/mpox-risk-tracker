@@ -12,9 +12,9 @@ def current_payload() -> dict:
     return {
         "generated_at": "2026-10-15T10:30:00Z",
         "case_stoplight": {
-            "version": 1,
+            "version": 3,
             "as_of": "2026-10-03",
-            "rows": [{}, {}, {}],
+            "rows": [{}, {}, {}, {}],
         },
     }
 

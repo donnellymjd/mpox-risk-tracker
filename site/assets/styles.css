@@ -226,6 +226,13 @@ main {
   line-height: 1.05;
 }
 
+.metric-detail {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .metric-status {
   border-left: 6px solid var(--muted);
 }
@@ -295,6 +302,13 @@ main {
 
 .stoplight-section > p {
   margin-bottom: 8px;
+}
+
+#stoplightContrast:not([hidden]) {
+  border-left: 4px solid #b45309;
+  background: #fff7e6;
+  color: #744210;
+  padding: 10px 14px;
 }
 
 .table-scroll {
@@ -613,8 +627,8 @@ svg {
 .chart-tooltip {
   position: absolute;
   z-index: 3;
-  width: min(220px, calc(100% - 16px));
-  max-height: 260px;
+  width: min(285px, calc(100% - 16px));
+  max-height: 330px;
   overflow: auto;
   border: 1px solid rgba(30, 73, 118, 0.16);
   border-radius: 8px;
@@ -647,9 +661,9 @@ svg {
 }
 
 .chart-tooltip small {
+  grid-column: 2 / -1;
   color: var(--muted);
   font-size: 0.78rem;
-  white-space: nowrap;
 }
 
 .legend {
@@ -671,6 +685,13 @@ svg {
   width: 20px;
   height: 3px;
   border-radius: 999px;
+}
+
+.legend-line-swatch {
+  display: block;
+  flex: none;
+  width: 34px;
+  height: 12px;
 }
 
 .method-section {
