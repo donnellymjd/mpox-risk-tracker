@@ -22,6 +22,10 @@ HISTORICAL_DAILY_CHART_ID = os.getenv("MPOX_HISTORICAL_DAILY_CHART_ID", "5lUBv")
 # Optional override for the chart currently embedded on the NYC mpox page.
 CURRENT_WEEKLY_CHART_ID = os.getenv("MPOX_CURRENT_WEEKLY_CHART_ID")
 
+# Reviewed chart identity. Its Datawrapper version still updates automatically.
+# If NYC replaces the chart ID, review the new source before changing this value.
+EXPECTED_CURRENT_WEEKLY_CHART_ID = "k45Nw"
+
 USER_AGENT = os.getenv(
     "MPOX_TRACKER_USER_AGENT",
     "d2sci-mpox-risk-tracker/0.1 (+https://d2sci.co)",

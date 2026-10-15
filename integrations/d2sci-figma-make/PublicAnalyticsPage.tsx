@@ -246,12 +246,24 @@ const STOPLIGHT_COLORS: Record<StoplightColor, { label: string; className: strin
   red: { label: "Red", className: "bg-red-100 text-red-800 border-red-200" },
 };
 
+function validCaseStoplight(value: CaseStoplight | undefined): value is CaseStoplight {
+  if (!value || value.version !== 1 || typeof value.as_of !== "string" ||
+      typeof value.four_weeks_ago_date !== "string" || !Array.isArray(value.rows) || value.rows.length !== 3) return false;
+  const ageDays = (Date.now() - Date.parse(`${value.as_of}T00:00:00Z`)) / 86_400_000;
+  if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays > 14) return false;
+  const colors = new Set(["green", "amber", "red"]);
+  return value.rows.every((row) => row && typeof row.key === "string" && typeof row.name === "string" &&
+    typeof row.rule === "string" && typeof row.changed_at === "string" &&
+    row.reading && colors.has(row.reading.color) && typeof row.reading.value === "string" &&
+    row.four_weeks_ago && colors.has(row.four_weeks_ago.color) && typeof row.four_weeks_ago.value === "string");
+}
+
 function StoplightTable({ data }: { data: TrackerData }) {
   const stoplight = data.case_stoplight;
-  if (!stoplight || stoplight.version !== 1 || !stoplight.as_of || !stoplight.four_weeks_ago_date || stoplight.rows.length === 0) return (
+  if (!validCaseStoplight(stoplight)) return (
     <div className="rounded-lg border border-brand-gray/30 bg-white p-4 sm:p-6">
       <h2 id="case-stoplight-heading" className="brand-navy mb-2">NYC Mpox Case Activity Stoplight</h2>
-      <p className="text-sm text-gray-600">{stoplight?.unavailable_reason ?? "Awaiting compatible stoplight data from the upstream tracker."}</p>
+      <p className="text-sm text-gray-600">{typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting current, compatible stoplight data from the upstream tracker."}</p>
     </div>
   );
   const rows = stoplight.rows;
@@ -266,8 +278,9 @@ function StoplightTable({ data }: { data: TrackerData }) {
             Reported weekly cases through {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. Three views of case activity: recent level, recent direction, and comparison with last year. Higher case counts are unfavorable.
           </p>
           <p className="mt-2 text-xs text-gray-600">
-            Source: <a href={stoplight.source_url ?? "https://www.nyc.gov/site/doh/health/health-topics/mpox.page"} target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health weekly mpox cases</a>; stoplight calculations by D²Sci in the upstream tracker. Hover over a row for its history, or open Why? for the rule and last color change.
+            Source: <a href={stoplight.source_url ?? "https://www.nyc.gov/site/doh/health/health-topics/mpox.page"} target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health weekly mpox cases</a>; stoplight calculations by D²Sci in the upstream tracker. Open Why? for the rule and last color change.
           </p>
+          <p className="mt-1 text-xs text-gray-600 sm:hidden">Scroll the table sideways for the comparison and details.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[680px] text-left text-sm">
@@ -282,7 +295,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.key} className="border-t border-brand-gray/20 align-top" title={`${row.name}: ${row.reading.value}. Four weeks ago: ${row.four_weeks_ago.value} (${STOPLIGHT_COLORS[row.four_weeks_ago.color].label}). Current color since ${fmtDate(`${row.changed_at}T00:00:00Z`)}.`}>
+              <tr key={row.key} className="border-t border-brand-gray/20 align-top">
                 <th scope="row" className="p-4 brand-navy font-semibold">{row.name}</th>
                 <td className="p-4">
                   <span className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-2.5 py-1 font-semibold ${STOPLIGHT_COLORS[row.reading.color].className}`}>

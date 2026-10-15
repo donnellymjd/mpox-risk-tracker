@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import UTC, date, datetime
 
 import pandas as pd
 
@@ -18,7 +19,7 @@ RULES = {
     },
     "yearOverYear": {
         "name": "Versus last year",
-        "rule": "Trailing 13-week total versus the 13 weeks ending 52 weeks earlier: green when at least 20% lower, red when more than 20% higher, amber otherwise.",
+        "rule": "Trailing 13-week total versus the 13 weeks ending 52 weeks earlier: green when at least 20% lower; red when more than 20% higher, or at least five cases after a zero baseline; amber otherwise.",
     },
 }
 
@@ -49,11 +50,14 @@ def _reading(counts: list[int], end: int, key: str) -> dict[str, str]:
     recent = sum(counts[end - 12 : end + 1])
     year_earlier = sum(counts[end - 64 : end - 51])
     ratio = recent / year_earlier if year_earlier else (math.inf if recent else 1)
-    color = "green" if ratio < 0.8 else "red" if ratio > 1.2 else "amber"
+    if year_earlier == 0:
+        color = "red" if recent >= 5 else "amber"
+    else:
+        color = "green" if recent * 5 <= year_earlier * 4 else "red" if recent * 5 > year_earlier * 6 else "amber"
     return {"color": color, "value": f"{_percentage(ratio)} ({recent} vs {year_earlier} cases)"}
 
 
-def build_case_stoplight(frame: pd.DataFrame, *, source_url: str | None = None) -> dict:
+def build_case_stoplight(frame: pd.DataFrame, *, source_url: str | None = None, today: date | None = None) -> dict:
     """Publish three stoplights from the official, unexpanded weekly case rows."""
 
     result = {
@@ -75,6 +79,12 @@ def build_case_stoplight(frame: pd.DataFrame, *, source_url: str | None = None) 
     if weekly.empty or weekly.isna().any().any() or (weekly["cases"] < 0).any() or (weekly["cases"] % 1 != 0).any():
         result["unavailable_reason"] = "The weekly source contains invalid dates or counts."
         return result
+    today = today or datetime.now(UTC).date()
+    # A week ending today or later may still be in progress.
+    weekly = weekly[weekly["week_ending"].dt.date < today].reset_index(drop=True)
+    if weekly.empty:
+        result["unavailable_reason"] = "No completed reporting week is available."
+        return result
     if weekly["week_ending"].duplicated().any() or (weekly["week_ending"].diff().dropna() != pd.Timedelta(days=7)).any():
         result["unavailable_reason"] = "The weekly source has missing or duplicate reporting weeks."
         return result
@@ -82,6 +92,9 @@ def build_case_stoplight(frame: pd.DataFrame, *, source_url: str | None = None) 
     dates = weekly["week_ending"].dt.strftime("%Y-%m-%d").tolist()
     counts = weekly["cases"].astype(int).tolist()
     result["as_of"] = dates[-1]
+    if (today - weekly["week_ending"].iloc[-1].date()).days > 14:
+        result["unavailable_reason"] = "The latest completed reporting week is more than 14 days old."
+        return result
     if len(counts) < 69:
         result["unavailable_reason"] = "At least 69 weekly observations are needed for the four-week-ago year comparison."
         return result

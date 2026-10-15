@@ -23,6 +23,10 @@ The stoplight is also descriptive: higher reported case counts are unfavorable, 
 
 The build computes the stoplight directly from the current NYC Health weekly case rows, before they are distributed into daily equivalents. `risk_data.json` and `summary.json` both publish a versioned `case_stoplight` object with the source URL, latest week, comparison week, three rows, and an explanation if the source is unavailable. Each row includes its color and value now, the color and value four weeks earlier, its threshold rule, and the week when its current color began. Clients should display those fields rather than reimplementing the thresholds.
 
+A reporting week ending today or later is excluded because it may still be in progress. If the latest completed week is more than 14 days old, the stoplight rows are withheld; consumers also check age so an older published file cannot continue to display a current-looking color. The year-over-year rule treats a zero comparison baseline separately: one to four new cases are amber, and five or more are red.
+
+The build expects the reviewed NYC Health Datawrapper chart ID `k45Nw` on the official mpox page and resolves its latest version automatically. If NYC replaces the chart, the build fails for source review instead of silently switching to another matching dataset. An intentional migration can use `MPOX_CURRENT_WEEKLY_CHART_ID` after the new chart is checked.
+
 - Recent level: four-week total below 15 is green, 15–39 amber, and 40 or more red.
 - Recent direction: latest four weeks versus the preceding four; at least 50% and five cases higher is red, an increase of at least two cases is amber, otherwise green.
 - Versus last year: trailing 13-week total versus the 13 weeks ending 52 weeks earlier; at least 20% lower is green, more than 20% higher red, otherwise amber.

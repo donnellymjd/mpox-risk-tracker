@@ -698,12 +698,21 @@ function renderStoplight(data) {
   const stoplight = data.case_stoplight;
   const body = byId("stoplightBody");
   clear(body);
-  if (!stoplight || stoplight.version !== 1 || !stoplight.as_of || !stoplight.four_weeks_ago_date || !stoplight.rows?.length) {
+  const ageDays = stoplight?.as_of ? (Date.now() - Date.parse(`${stoplight.as_of}T00:00:00Z`)) / 86400000 : NaN;
+  const colors = new Set(["green", "amber", "red"]);
+  const valid = stoplight?.version === 1 && typeof stoplight.as_of === "string" &&
+    typeof stoplight.four_weeks_ago_date === "string" && Array.isArray(stoplight.rows) &&
+    stoplight.rows.length === 3 && Number.isFinite(ageDays) && ageDays >= 0 && ageDays <= 14 &&
+    stoplight.rows.every((item) => item && typeof item.name === "string" && typeof item.rule === "string" &&
+      typeof item.changed_at === "string" && item.reading && colors.has(item.reading.color) &&
+      typeof item.reading.value === "string" && item.four_weeks_ago && colors.has(item.four_weeks_ago.color) &&
+      typeof item.four_weeks_ago.value === "string");
+  if (!valid) {
     byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
-    cell.textContent = stoplight?.unavailable_reason || "Awaiting stoplight data from the tracker build.";
+    cell.textContent = typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting current, compatible stoplight data from the tracker build.";
     row.append(cell);
     body.append(row);
     return;
@@ -716,7 +725,6 @@ function renderStoplight(data) {
   stoplight.rows.forEach((item) => {
     const row = document.createElement("tr");
     const changed = fmt.format(new Date(`${item.changed_at}T00:00:00Z`));
-    row.title = `${item.name}: ${item.reading.value}. Four weeks ago: ${item.four_weeks_ago.value} (${item.four_weeks_ago.color}). Current color since ${changed}.`;
 
     const name = document.createElement("th");
     name.scope = "row";
@@ -793,7 +801,12 @@ fetch("data/risk_data.json", { cache: "no-store" })
     byId("last28").textContent = "--";
     byId("latestDate").textContent = "--";
     byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
-    byId("stoplightBody").textContent = "Tracker data could not be loaded.";
+    const errorRow = document.createElement("tr");
+    const errorCell = document.createElement("td");
+    errorCell.colSpan = 5;
+    errorCell.textContent = "Tracker data could not be loaded.";
+    errorRow.append(errorCell);
+    byId("stoplightBody").replaceChildren(errorRow);
     byId("riskChartMeta").textContent = "Tracker data could not be loaded.";
     byId("cumulativeChartMeta").textContent = "Tracker data could not be loaded.";
     console.error(error);

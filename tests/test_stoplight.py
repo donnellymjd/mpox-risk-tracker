@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 
 from mpox_tracker.stoplight import build_case_stoplight
@@ -38,3 +40,37 @@ def test_case_stoplight_hides_status_when_reporting_weeks_are_missing() -> None:
 
     assert payload["rows"] == []
     assert payload["unavailable_reason"] == "The weekly source has missing or duplicate reporting weeks."
+
+
+def test_year_comparison_exact_green_boundary_and_zero_baseline() -> None:
+    dates = pd.date_range(end="2026-10-03", periods=69, freq="7D")
+    counts = [0] * 69
+    counts[4] = 5
+    counts[-1] = 4
+    frame = pd.DataFrame({"week_ending": dates, "cases": counts})
+    rows = {row["key"]: row for row in build_case_stoplight(frame, today=date(2026, 10, 15))["rows"]}
+    assert rows["yearOverYear"]["reading"]["color"] == "green"
+
+    counts[4] = 0
+    counts[-1] = 1
+    frame["cases"] = counts
+    rows = {row["key"]: row for row in build_case_stoplight(frame, today=date(2026, 10, 15))["rows"]}
+    assert rows["yearOverYear"]["reading"]["color"] == "amber"
+
+    counts[-1] = 5
+    frame["cases"] = counts
+    rows = {row["key"]: row for row in build_case_stoplight(frame, today=date(2026, 10, 15))["rows"]}
+    assert rows["yearOverYear"]["reading"]["color"] == "red"
+
+
+def test_in_progress_week_excluded_and_stale_data_suppressed() -> None:
+    dates = pd.date_range(end="2026-10-03", periods=69, freq="7D")
+    frame = pd.DataFrame({"week_ending": dates, "cases": [1] * 69})
+    frame.loc[len(frame)] = {"week_ending": pd.Timestamp("2026-10-17"), "cases": 99}
+    payload = build_case_stoplight(frame, today=date(2026, 10, 15))
+    assert payload["as_of"] == "2026-10-03"
+    assert payload["rows"]
+
+    stale = build_case_stoplight(frame.iloc[:-1], today=date(2026, 10, 25))
+    assert stale["rows"] == []
+    assert "more than 14 days old" in stale["unavailable_reason"]
