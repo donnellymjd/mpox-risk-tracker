@@ -41,7 +41,13 @@ def build(output_dir: Path) -> BuildResult:
 
     cases = combine_cases(daily_2022, historical_daily, current_weekly)
     seasonal = build_seasonal(cases)
-    payload = build_payload(cases, seasonal, [source_2022, source_historical, source_current])
+    payload = build_payload(
+        cases,
+        seasonal,
+        [source_2022, source_historical, source_current],
+        weekly_cases=current_weekly_raw,
+        weekly_source_url=source_current.url,
+    )
     result = BuildResult(cases=cases, seasonal=seasonal, payload=payload)
     write_outputs(result, output_dir)
     return result

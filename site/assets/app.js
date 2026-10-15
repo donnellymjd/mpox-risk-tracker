@@ -55,6 +55,7 @@ const fmt = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
 
 const compact = new Intl.NumberFormat("en-US", {
@@ -693,9 +694,63 @@ function renderSummary(data) {
   });
 }
 
+function renderStoplight(data) {
+  const stoplight = data.case_stoplight;
+  const body = byId("stoplightBody");
+  clear(body);
+  if (!stoplight || stoplight.version !== 1 || !stoplight.as_of || !stoplight.four_weeks_ago_date || !stoplight.rows?.length) {
+    byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = stoplight?.unavailable_reason || "Awaiting stoplight data from the tracker build.";
+    row.append(cell);
+    body.append(row);
+    return;
+  }
+
+  byId("stoplightMeta").textContent = `Reported weekly cases through ${fmt.format(new Date(`${stoplight.as_of}T00:00:00Z`))}. Recent level, direction, and comparison with last year.`;
+  byId("stoplightPriorDate").textContent = `Week ending ${fmt.format(new Date(`${stoplight.four_weeks_ago_date}T00:00:00Z`))}`;
+  if (stoplight.source_url) byId("stoplightSource").href = stoplight.source_url;
+
+  stoplight.rows.forEach((item) => {
+    const row = document.createElement("tr");
+    const changed = fmt.format(new Date(`${item.changed_at}T00:00:00Z`));
+    row.title = `${item.name}: ${item.reading.value}. Four weeks ago: ${item.four_weeks_ago.value} (${item.four_weeks_ago.color}). Current color since ${changed}.`;
+
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = item.name;
+    const status = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `stoplight-badge ${item.reading.color}`;
+    badge.textContent = item.reading.color;
+    status.append(badge);
+    const latest = document.createElement("td");
+    latest.textContent = item.reading.value;
+    const prior = document.createElement("td");
+    prior.textContent = `${item.four_weeks_ago.value} (${item.four_weeks_ago.color} then)`;
+    const detailCell = document.createElement("td");
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Why?";
+    const rule = document.createElement("p");
+    rule.textContent = item.rule;
+    const changedNote = document.createElement("p");
+    changedNote.textContent = `Current color since the week ending ${changed}.`;
+    details.append(summary, rule, changedNote);
+    detailCell.append(details);
+    row.append(name, status, latest, prior, detailCell);
+    body.append(row);
+  });
+}
+
 function render() {
   if (!trackerData) return;
   const years = [...selectedYears].sort((a, b) => a - b);
+  const context = `Source: NYC Health · Years shown: ${years.length ? years.join(", ") : "none"} · Months shown: ${monthOptions[selectedMonthRange.startMonthIndex].label}–${monthOptions[selectedMonthRange.endMonthIndex].label} · Latest source week ending ${fmt.format(new Date(`${trackerData.latest_data_date}T00:00:00Z`))}`;
+  byId("riskChartMeta").textContent = context;
+  byId("cumulativeChartMeta").textContent = context;
   setupYearControls(trackerData);
   setupMonthControls();
   drawChart({
@@ -704,7 +759,7 @@ function render() {
     data: trackerData,
     years,
     field: "risk_index",
-    label: "Risk index",
+    label: "Case growth index (unitless)",
     riskBands: true,
   });
   drawChart({
@@ -714,7 +769,7 @@ function render() {
     years,
     field: "cumulative_cases",
     minY: 0,
-    label: "Cases",
+    label: "Cumulative reported cases",
   });
 }
 
@@ -729,6 +784,7 @@ fetch("data/risk_data.json", { cache: "no-store" })
     selectedYears = new Set(defaultYears(data));
     selectedMonthRange = defaultMonthRange(data);
     renderSummary(data);
+    renderStoplight(data);
     render();
   })
   .catch((error) => {
@@ -736,6 +792,10 @@ fetch("data/risk_data.json", { cache: "no-store" })
     byId("riskIndex").textContent = "--";
     byId("last28").textContent = "--";
     byId("latestDate").textContent = "--";
+    byId("stoplightMeta").textContent = "Weekly case stoplight unavailable.";
+    byId("stoplightBody").textContent = "Tracker data could not be loaded.";
+    byId("riskChartMeta").textContent = "Tracker data could not be loaded.";
+    byId("cumulativeChartMeta").textContent = "Tracker data could not be loaded.";
     console.error(error);
   });
 

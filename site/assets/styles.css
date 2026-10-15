@@ -270,6 +270,107 @@ main {
   font-size: 0.95rem;
 }
 
+.chart-meta,
+.chart-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.chart-meta {
+  margin: 10px 0 14px;
+}
+
+.chart-note {
+  margin: 14px 0 0;
+}
+
+.chart-note a {
+  color: var(--brand-blue);
+  font-weight: 700;
+}
+
+.stoplight-section > h2 {
+  margin-bottom: 8px;
+}
+
+.stoplight-section > p {
+  margin-bottom: 8px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+.stoplight-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.stoplight-table th,
+.stoplight-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.stoplight-table thead {
+  background: var(--bg);
+}
+
+.stoplight-table thead th {
+  font-family: var(--font-heading);
+}
+
+.stoplight-table thead small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.stoplight-badge {
+  display: inline-block;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.stoplight-badge.green {
+  border-color: #a7d7b3;
+  background: #e0f4e5;
+  color: #205c37;
+}
+
+.stoplight-badge.amber {
+  border-color: #e9d28d;
+  background: #fff3ce;
+  color: #795500;
+}
+
+.stoplight-badge.red {
+  border-color: #e6aaaa;
+  background: #fbe4e4;
+  color: #9b2424;
+}
+
+.stoplight-table summary {
+  color: var(--brand-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.stoplight-table details p {
+  max-width: 230px;
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+}
+
 .year-controls {
   display: flex;
   flex-wrap: wrap;

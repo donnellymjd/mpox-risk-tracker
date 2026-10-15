@@ -8,14 +8,26 @@ This project is intended for situational awareness, public communication, and re
 
 ## What the tracker measures
 
-The tracker summarizes recent mpox case activity in NYC through four outputs:
+The tracker summarizes recent mpox case activity in NYC through five outputs:
 
 - Reported cases: public case counts from NYC Health sources, normalized to a daily-equivalent series.
 - Smoothed daily cases: a 14-day Gaussian-smoothed case signal used to reduce reporting noise.
 - Cumulative cases: year-to-date cumulative cases for each calendar year.
 - Spread risk index: a directional indicator of whether smoothed case activity is increasing or decreasing.
+- Case activity stoplight: three descriptive weekly-count comparisons for recent level, recent direction, and the same period last year.
 
 The spread risk index is the main headline signal. It is best read as a momentum indicator, not as an estimate of individual exposure risk, transmissibility, or health system burden.
+The stoplight is also descriptive: higher reported case counts are unfavorable, but its colors are not calibrated probabilities or personal medical risk categories.
+
+## Weekly case activity stoplight
+
+The build computes the stoplight directly from the current NYC Health weekly case rows, before they are distributed into daily equivalents. `risk_data.json` and `summary.json` both publish a versioned `case_stoplight` object with the source URL, latest week, comparison week, three rows, and an explanation if the source is unavailable. Each row includes its color and value now, the color and value four weeks earlier, its threshold rule, and the week when its current color began. Clients should display those fields rather than reimplementing the thresholds.
+
+- Recent level: four-week total below 15 is green, 15–39 amber, and 40 or more red.
+- Recent direction: latest four weeks versus the preceding four; at least 50% and five cases higher is red, an increase of at least two cases is amber, otherwise green.
+- Versus last year: trailing 13-week total versus the 13 weeks ending 52 weeks earlier; at least 20% lower is green, more than 20% higher red, otherwise amber.
+
+These thresholds are pragmatic display rules, not validated public-health alert levels. The build withholds all three rows when weekly dates or counts are invalid, reporting weeks are missing or duplicated, or there is insufficient history for the four-weeks-ago year comparison.
 
 ## Data sources
 
@@ -157,8 +169,8 @@ Do not use the tracker to determine whether a specific person should seek vaccin
 
 The build process writes these public artifacts:
 
-- `site/data/risk_data.json`: full dashboard payload, including series values, parameters, chart color styling, source metadata, and notes.
-- `site/data/summary.json`: compact latest-status summary used by lightweight previews.
+- `site/data/risk_data.json`: full dashboard payload, including series values, parameters, the case stoplight, chart color styling, source metadata, and notes.
+- `site/data/summary.json`: compact latest-status summary, including the case stoplight, used by lightweight previews.
 - `site/data/cases.csv`: standardized daily case series used by the dashboard.
 - `site/index.html`: full interactive dashboard.
 - `site/embed-card.html`: compact status card.
@@ -190,6 +202,7 @@ Scheduled build:
 src/mpox_tracker/sources.py   Fetches NYC Health and Datawrapper sources
 src/mpox_tracker/styling.py   Defines exported chart colors and styling contract
 src/mpox_tracker/model.py     Standardizes data and computes the indicator
+src/mpox_tracker/stoplight.py Computes weekly case activity stoplights
 src/mpox_tracker/build.py     Command-line build entry point
 site/                         Static dashboard files
 tests/                        Unit tests for source transformation and indicator behavior

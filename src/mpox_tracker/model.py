@@ -14,6 +14,7 @@ import pandas as pd
 from . import config
 from .sources import SourceMetadata
 from . import styling
+from .stoplight import build_case_stoplight
 
 
 RISK_BANDS = styling.indicator_risk_bands()
@@ -177,6 +178,8 @@ def build_payload(
     cases: pd.DataFrame,
     seasonal: pd.DataFrame,
     sources: list[SourceMetadata],
+    weekly_cases: pd.DataFrame | None = None,
+    weekly_source_url: str | None = None,
 ) -> dict:
     current_year = int(cases["year"].max())
     latest_date = pd.Timestamp(cases["date"].max())
@@ -237,6 +240,10 @@ def build_payload(
             ],
         },
         "sources": [source.to_dict() for source in sources],
+        "case_stoplight": build_case_stoplight(
+            weekly_cases if weekly_cases is not None else pd.DataFrame(),
+            source_url=weekly_source_url,
+        ),
         "series": records,
         "notes": [
             "This is an unofficial indicator derived from public NYC Health case data.",
@@ -262,6 +269,7 @@ def write_outputs(result: BuildResult, output_dir: Path) -> None:
         "generated_at": result.payload["generated_at"],
         "latest_data_date": result.payload["latest_data_date"],
         "summary": result.payload["summary"],
+        "case_stoplight": result.payload["case_stoplight"],
         "sources": result.payload["sources"],
     }
     (data_dir / "summary.json").write_text(
