@@ -329,32 +329,32 @@ function StoplightTable({ data }: { data: TrackerData }) {
           <p className="mt-1 text-xs text-gray-600 sm:hidden">Scroll the table sideways for the comparison and details.</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-left text-sm">
+          <table className="w-full min-w-[680px] text-left text-sm leading-snug">
           <thead className="bg-brand-gray/20 text-gray-700">
             <tr>
-              <th scope="col" className="p-4 font-semibold">Dimension</th>
-              <th scope="col" className="p-4 font-semibold">Stoplight</th>
-              <th scope="col" className="p-4 font-semibold">Latest</th>
-              <th scope="col" className="p-4 font-semibold">Four weeks ago <span className="block text-xs font-normal">As of {fmtDate(`${fourWeeksAgoDate}T00:00:00Z`)}</span></th>
-              <th scope="col" className="p-4 font-semibold">Details</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Dimension</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Stoplight</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Latest</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Four weeks ago <span className="block text-xs font-normal">As of {fmtDate(`${fourWeeksAgoDate}T00:00:00Z`)}</span></th>
+              <th scope="col" className="px-3 py-2 font-semibold">Details</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.key} className="border-t border-brand-gray/20 align-top">
-                <th scope="row" className="p-4 brand-navy font-semibold">{row.name}</th>
-                <td className="p-4">
+                <th scope="row" className="px-3 py-2 brand-navy font-semibold">{row.name}</th>
+                <td className="px-3 py-2">
                   <span className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-2.5 py-1 font-semibold ${STOPLIGHT_COLORS[row.reading.color].className}`}>
                     <span className="h-2 w-2 rounded-full bg-current" aria-hidden="true" />
                     {STOPLIGHT_COLORS[row.reading.color].label}
                   </span>
                 </td>
-                <td className="p-4 font-medium text-gray-900">{row.reading.value}</td>
-                <td className="p-4 text-gray-700">
+                <td className="px-3 py-2 font-medium text-gray-900">{row.reading.value}</td>
+                <td className="px-3 py-2 text-gray-700">
                   {row.four_weeks_ago.value}
                   <span className="block text-xs text-gray-500">{STOPLIGHT_COLORS[row.four_weeks_ago.color].label} then</span>
                 </td>
-                <td className="p-4">
+                <td className="px-3 py-2">
                   <details className="group">
                     <summary className="inline-flex cursor-pointer items-center gap-1 brand-blue hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
                       <Info className="h-4 w-4" aria-hidden="true" /> Why?
@@ -762,6 +762,7 @@ function TrackerChart({
               }}
             />
           )}
+          {/* Reporting weeks from different years interleave on this calendar axis. */}
           {plottedYears.map((year) => (
             <Line
               key={year}
@@ -774,7 +775,7 @@ function TrackerChart({
               strokeWidth={year === data.current_year ? 3.4 : 2.5}
               strokeOpacity={1}
               dot={field === "weekly_growth_percent" && frequencyByYear[year] === "weekly" ? { r: 2 } : false}
-              connectNulls={field === "weekly_growth_percent"}
+              connectNulls={true}
               isAnimationActive={false}
             />
           ))}
@@ -1155,7 +1156,7 @@ export function PublicAnalyticsPage() {
 
       {/* Weekly case activity stoplight */}
       <section className="py-12 px-4 bg-white" aria-labelledby="case-stoplight-heading">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           {data ? (
             <StoplightTable data={data} />
           ) : (
