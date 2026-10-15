@@ -19,6 +19,8 @@ The tracker summarizes recent mpox case activity in NYC through five outputs:
 The spread risk index is the main headline signal. It is best read as a momentum indicator, not as an estimate of individual exposure risk, transmissibility, or health system burden.
 The stoplight is also descriptive: higher reported case counts are unfavorable, but its colors are not calibrated probabilities or personal medical risk categories.
 
+Both charts carry their metric, selected years and months, and full latest source date inside the chart area for screenshots. Each chart also has an expandable table of the plotted values, available without hover to keyboard and touch users.
+
 ## Weekly case activity stoplight
 
 The build computes the stoplight directly from the current NYC Health weekly case rows, before they are distributed into daily equivalents. `risk_data.json` and `summary.json` both publish a versioned `case_stoplight` object with the source URL, latest week, comparison week, three rows, and an explanation if the source is unavailable. Each row includes its color and value now, the color and value four weeks earlier, its threshold rule, and the week when its current color began. Clients should display those fields rather than reimplementing the thresholds.
@@ -199,6 +201,7 @@ Scheduled build:
 - GitHub Actions runs tests, rebuilds the data, and deploys the static dashboard.
 - The scheduled workflow runs daily at `10:23 UTC`.
 - The workflow can also be run manually from GitHub Actions.
+- A separate watchdog checks the published JSON daily at `12:47 UTC`. It opens one GitHub issue assigned to `donnellymjd` if the published build is more than 36 hours old, the completed case week is over 14 days old, or the stoplight is missing; it closes the issue after recovery. Watchdog runs and issue notifications depend on GitHub Actions and repository notification settings, so this is not an out-of-band paging service.
 
 ## Project structure
 
@@ -207,6 +210,7 @@ src/mpox_tracker/sources.py   Fetches NYC Health and Datawrapper sources
 src/mpox_tracker/styling.py   Defines exported chart colors and styling contract
 src/mpox_tracker/model.py     Standardizes data and computes the indicator
 src/mpox_tracker/stoplight.py Computes weekly case activity stoplights
+src/mpox_tracker/freshness.py Checks published feed freshness for the watchdog
 src/mpox_tracker/build.py     Command-line build entry point
 site/                         Static dashboard files
 tests/                        Unit tests for source transformation and indicator behavior

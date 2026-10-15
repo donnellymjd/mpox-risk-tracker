@@ -385,8 +385,8 @@ function clientPointToSvg(svg, event) {
   if (!transform) {
     const bounds = svg.getBoundingClientRect();
     return {
-      x: ((event.clientX - bounds.left) / bounds.width) * 960,
-      y: ((event.clientY - bounds.top) / bounds.height) * 380,
+      x: ((event.clientX - bounds.left) / bounds.width) * svg.viewBox.baseVal.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * svg.viewBox.baseVal.height,
     };
   }
   const point = svg.createSVGPoint();
@@ -528,11 +528,22 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
   clear(svg);
   const tooltip = ensureTooltip(svg);
   const width = 960;
-  const height = 380;
-  const margin = { top: 20, right: 24, bottom: 46, left: 54 };
+  const height = 430;
+  const margin = { top: 76, right: 24, bottom: 46, left: 54 };
   const chartW = width - margin.left - margin.right;
   const chartH = height - margin.top - margin.bottom;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  const title = field === "risk_index" ? "NYC Mpox Case Growth Indicator" : "NYC Mpox Cumulative Reported Cases";
+  const contextLines = [
+    `NYC Health · Years shown: ${years.length ? years.join(", ") : "none"} · Months: ${monthOptions[selectedMonthRange.startMonthIndex].label}–${monthOptions[selectedMonthRange.endMonthIndex].label}`,
+    `Latest source week ending ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))} · ${label}`,
+  ];
+  svg.appendChild(svgEl("title")).textContent = `${title}. ${contextLines.join(". ")}`;
+  svg.appendChild(svgEl("text", { x: margin.left, y: 22, class: "chart-inline-title" })).textContent = title;
+  contextLines.forEach((line, index) => {
+    svg.appendChild(svgEl("text", { x: margin.left, y: 43 + index * 18, class: "chart-inline-meta" })).textContent = line;
+  });
 
   const dayRange = visibleDayRange();
   const grouped = groupByYear(data.series, years, dayRange);
@@ -629,14 +640,14 @@ function drawChart({ svgId, legendId, data, years, field, minY, label, riskBands
     if (latest.day_index >= dayRange.start && latest.day_index <= dayRange.end) {
       svg.appendChild(svgEl("line", { x1: x, x2: x, y1: margin.top, y2: height - margin.bottom, class: "current-marker" }));
 
-      const labelText = `Latest data ${latest.month_day}`;
-      const labelX = Math.min(width - margin.right - 118, Math.max(margin.left + 8, x + 8));
+      const labelText = `Latest ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))}`;
+      const labelX = Math.min(width - margin.right - 180, Math.max(margin.left + 8, x + 8));
       const labelY = margin.top + 16;
       svg.appendChild(
         svgEl("rect", {
           x: labelX - 6,
           y: labelY - 13,
-          width: 116,
+          width: 180,
           height: 20,
           rx: 4,
           class: "current-marker-label-bg",
@@ -753,6 +764,48 @@ function renderStoplight(data) {
   });
 }
 
+function renderChartDataTable(tableId, data, years, field, title) {
+  const table = byId(tableId);
+  clear(table);
+  const grouped = groupByYear(data.series, years, visibleDayRange());
+  const byDay = new Map();
+  Object.entries(grouped).forEach(([year, rows]) => {
+    rows.forEach((row) => {
+      if (!byDay.has(row.day_index)) byDay.set(row.day_index, { date: row.month_day, values: {} });
+      byDay.get(row.day_index).values[year] = row[field];
+    });
+  });
+
+  const caption = document.createElement("caption");
+  caption.textContent = `${title}. NYC Health data through ${fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`))}. Values for the selected years and months.`;
+  table.append(caption);
+  const head = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  ["Month and day", ...years.map(String)].forEach((name) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = name;
+    headerRow.append(th);
+  });
+  head.append(headerRow);
+  table.append(head);
+  const body = document.createElement("tbody");
+  [...byDay.entries()].sort(([a], [b]) => a - b).forEach(([, entry]) => {
+    const row = document.createElement("tr");
+    const dateCell = document.createElement("th");
+    dateCell.scope = "row";
+    dateCell.textContent = entry.date;
+    row.append(dateCell);
+    years.forEach((year) => {
+      const cell = document.createElement("td");
+      cell.textContent = valueText(entry.values[year], "—", field === "risk_index" ? precise : compact);
+      row.append(cell);
+    });
+    body.append(row);
+  });
+  table.append(body);
+}
+
 function render() {
   if (!trackerData) return;
   const years = [...selectedYears].sort((a, b) => a - b);
@@ -779,6 +832,8 @@ function render() {
     minY: 0,
     label: "Cumulative reported cases",
   });
+  renderChartDataTable("riskDataTable", trackerData, years, "risk_index", "NYC mpox case growth index (unitless)");
+  renderChartDataTable("caseDataTable", trackerData, years, "cumulative_cases", "NYC mpox cumulative reported cases");
 }
 
 fetch("data/risk_data.json", { cache: "no-store" })

@@ -105,6 +105,10 @@
           <svg id="riskChart" role="img" aria-label="NYC mpox case growth index by calendar date and year"></svg>
         </div>
         <div id="riskLegend" class="legend" aria-label="Risk chart legend"></div>
+        <details class="chart-data-details">
+          <summary>View case growth chart values as a table</summary>
+          <div class="table-scroll"><table id="riskDataTable" class="chart-data-table"></table></div>
+        </details>
         <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox case data</a>; indicator by D²Sci. Recent weekly totals are spread across reporting days before smoothing. X-axis: calendar month and day; Y-axis: unitless case growth index.</p>
       </section>
 
@@ -120,6 +124,10 @@
           <svg id="cumulativeChart" role="img" aria-label="NYC mpox cumulative reported cases by calendar year"></svg>
         </div>
         <div id="caseLegend" class="legend" aria-label="Cumulative chart legend"></div>
+        <details class="chart-data-details">
+          <summary>View cumulative cases chart values as a table</summary>
+          <div class="table-scroll"><table id="caseDataTable" class="chart-data-table"></table></div>
+        </details>
         <p class="chart-note">Source: <a href="https://www.nyc.gov/site/doh/health/health-topics/mpox.page">NYC Health mpox case data</a>; chart by D²Sci. X-axis: calendar month and day; Y-axis: cumulative reported cases. The current-year line ends at the latest available data date.</p>
       </section>
 

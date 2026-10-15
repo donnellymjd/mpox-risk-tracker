@@ -477,7 +477,56 @@ main {
 svg {
   display: block;
   width: 100%;
-  height: 380px;
+  height: 430px;
+}
+
+.chart-inline-title {
+  fill: var(--brand-navy);
+  font: 700 18px var(--font-heading);
+}
+
+.chart-inline-meta {
+  fill: var(--muted);
+  font: 12px var(--font-heading);
+}
+
+.chart-data-details {
+  margin-top: 16px;
+}
+
+.chart-data-details summary {
+  color: var(--brand-blue);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chart-data-details summary:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 3px;
+}
+
+.chart-data-table {
+  width: 100%;
+  min-width: 440px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-data-table caption {
+  padding: 10px 0;
+  text-align: left;
+  font-weight: 700;
+}
+
+.chart-data-table th,
+.chart-data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.chart-data-table thead {
+  background: var(--bg);
 }
 
 .grid-line {
@@ -859,6 +908,6 @@ footer a {
   }
 
   svg {
-    height: 330px;
+    height: 380px;
   }
 }

@@ -1,0 +1,41 @@
+name: Check published tracker freshness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 12 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ALERT_TITLE: Tracker data refresh alert
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check public feed
+        id: freshness
+        continue-on-error: true
+        run: PYTHONPATH=src python3 -m mpox_tracker.freshness
+      - name: Open one alert issue if stale or unavailable
+        if: steps.freshness.outcome == 'failure'
+        run: |
+          issue_number=$(gh issue list --state open --limit 1000 --json number,title --jq '.[] | select(.title == "Tracker data refresh alert") | .number' | head -n 1)
+          if [[ -z "$issue_number" ]]; then
+            gh issue create --title "$ALERT_TITLE" --assignee donnellymjd --body "The published tracker failed its daily freshness check. Check the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) for the exact reason, then inspect the [public data feed](https://donnellymjd.github.io/mpox-risk-tracker/data/risk_data.json). This issue closes automatically after the feed recovers."
+          fi
+      - name: Close alert issue after recovery
+        if: steps.freshness.outcome == 'success'
+        run: |
+          issue_number=$(gh issue list --state open --limit 1000 --json number,title --jq '.[] | select(.title == "Tracker data refresh alert") | .number' | head -n 1)
+          if [[ -n "$issue_number" ]]; then
+            gh issue close "$issue_number" --comment "The published build and case week passed the latest freshness check."
+          fi
+      - name: Mark stale feed run as failed
+        if: steps.freshness.outcome == 'failure'
+        run: exit 1

@@ -529,9 +529,16 @@ function TrackerChart({
   );
 
   const bands = showRiskBands ? styling.riskBands : [];
+  const chartTitle = field === "risk_index"
+    ? "NYC Mpox Case Growth Indicator"
+    : "NYC Mpox Cumulative Reported Cases";
+  const chartContext = `NYC Health · Years: ${selectedYears.length ? selectedYears.join(", ") : "none"} · Months: ${MONTH_TICKS[monthRange.startMonthIndex].label}–${MONTH_TICKS[monthRange.endMonthIndex].label} · Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}`;
 
   return (
     <div className="w-full">
+      <div className="rounded-md border border-brand-gray/30 bg-white p-2">
+      <div className="ml-2 text-sm font-semibold brand-navy">{chartTitle}</div>
+      <div className="ml-2 text-xs text-gray-600">{chartContext}</div>
       <div className="text-xs text-gray-500 mb-1 ml-2">{yLabel}</div>
       <div style={{ height: 360 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -598,7 +605,7 @@ function TrackerChart({
               stroke="#0f172a"
               strokeDasharray="4 4"
               label={{
-                value: `Latest data ${latest.month_day}`,
+                value: `Latest data ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}`,
                 position: "top",
                 fill: "#0f172a",
                 fontSize: 11,
@@ -624,6 +631,32 @@ function TrackerChart({
       </ResponsiveContainer>
       </div>
       <ChartMark />
+      </div>
+      <details className="mt-4 text-sm">
+        <summary className="cursor-pointer brand-blue font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">View {field === "risk_index" ? "case growth" : "cumulative cases"} chart values as a table</summary>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[440px] border-collapse text-left text-xs tabular-nums">
+            <caption className="py-2 text-left font-semibold brand-navy">{chartTitle}. NYC Health data through {fmtDate(`${data.latest_data_date}T00:00:00Z`)}. Selected years and months.</caption>
+            <thead className="bg-brand-gray/20">
+              <tr>
+                <th scope="col" className="border-b border-brand-gray/30 p-2">Month and day</th>
+                {selectedYears.map((year) => <th key={year} scope="col" className="border-b border-brand-gray/30 p-2">{year}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {chartData.map((row) => (
+                <tr key={row.day_index}>
+                  <th scope="row" className="border-b border-brand-gray/20 p-2 font-medium">{row.month_day}</th>
+                  {selectedYears.map((year) => {
+                    const value = row[`y${year}`] as number | null | undefined;
+                    return <td key={year} className="border-b border-brand-gray/20 p-2">{value === null || value === undefined ? "—" : field === "risk_index" ? value.toFixed(2) : value.toLocaleString()}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }
