@@ -8,10 +8,10 @@ This project is intended for situational awareness, public communication, and re
 
 ## What the tracker measures
 
-The tracker summarizes recent mpox case activity in NYC through six outputs:
+The tracker summarizes recent mpox case activity in NYC through these outputs:
 
-- Reported cases: public case counts from NYC Health sources, normalized to a daily-equivalent series.
-- Smoothed daily-equivalent cases: a 14-day Gaussian-smoothed display signal used to reduce reporting noise; current weekly counts are apportioned across days only for this and the cumulative view.
+- Reported cases: observed daily counts where NYC Health publishes them and original completed-week totals where only weekly reporting is available.
+- Smoothed daily-equivalent cases: a 14-day Gaussian-smoothed legacy display signal; current weekly counts are apportioned across days only for this and the cumulative view, not for the current stoplight or weekly trend charts.
 - Cumulative cases: year-to-date cumulative cases for each calendar year.
 - Weekly case growth trend: an eight-week log-linear estimate of weekly percentage change in reported case counts, recalculated daily where genuine daily reports exist and otherwise at completed reporting weeks.
 - Observed-daily case growth index: a legacy historical field retained in the data feed for compatibility, but no longer shown as a separate dashboard section.
@@ -20,6 +20,7 @@ The tracker summarizes recent mpox case activity in NYC through six outputs:
 The weekly growth trend describes recent change, not overall case activity. A slowing trend can coexist with elevated case counts, and neither growth measure estimates individual exposure risk, transmissibility, or health system burden.
 The stoplight is also descriptive: higher reported case counts are unfavorable, but its colors are not calibrated probabilities or personal medical risk categories.
 The top summary shows the percentage of current stoplight indicators marked red, with the count and denominator. It is computed from the validated stoplight rows on each data pull; if the feed is unavailable or stale, the percentage is withheld rather than shown as zero.
+Vaccination coverage and wastewater detections are not inputs to the tracker or its stoplight. In particular, missing wastewater samples are not interpreted as negative detections.
 
 All charts carry their metric, selected years and months, and full latest source date inside the chart area for screenshots. Each chart also has an expandable table of the plotted values, available without hover to keyboard and touch users. The year and month controls apply to every chart. The default view selects the current and prior year, from January through the viewer's current calendar month; 2022 remains available through the year filter because its outbreak-scale counts otherwise compress recent-year trends.
 
@@ -58,6 +59,8 @@ The build writes source metadata, row counts, fetch timestamps, and Datawrapper 
 
 ## Methodology
 
+The headline signal and all four stoplight rows use **original completed reporting-week counts**, not estimated daily cases. The weekly growth chart also uses genuine daily case reports where available. The older smoothed daily-equivalent signal and observed-daily index remain in the feed for compatibility but do not determine the current stoplight. See [Weekly case activity stoplight](#weekly-case-activity-stoplight) for the exact color rules.
+
 ### 1. Ingest and standardize case data
 
 The pipeline loads three data feeds:
@@ -72,9 +75,17 @@ All inputs are converted to a common schema:
 date, cases, source
 ```
 
-Dates are normalized to calendar days. Case counts are parsed as numeric values. Missing case values are treated as zero within fetched records.
+Dates are normalized to calendar days and case counts are parsed as numeric values. Missing case values are treated as zero within fetched daily records. Weekly stoplight inputs are separately validated; missing or invalid reporting weeks are not silently replaced with zero.
 
-### 2. Convert weekly reporting to daily equivalents
+### 2. Validate completed reporting weeks and calculate current signals
+
+The four current stoplight rows are calculated from NYC Health's original weekly totals. A week ending today or later is excluded because it may still be in progress. Missing or duplicated weeks, invalid counts, insufficient history, or a latest completed week more than 14 days old make the stoplight unavailable rather than green or zero. The year-earlier comparison needs 13 complete weeks in both periods, including at the four-weeks-ago reference date.
+
+Weekly growth fits a straight line to `log(1 + cases)` across eight consecutive weekly totals, then converts the fitted slope to percentage change per week with `100 × (exp(slope) − 1)`. The `+1` allows zero-count weeks but makes this a descriptive trend, not a literal incidence growth rate. The first row's red color also requires at least 15 cases in the latest four complete weeks. Recent level uses that four-week case total. Momentum compares the four-week and 13-week **weekly averages**; a higher four-week average is unfavorable. The year-earlier row compares the latest 13-week total with the 13 weeks ending 52 weeks before it. The top “Indicators red” share is the number of red rows divided by four only when all four rows are valid.
+
+The growth chart adds daily-frequency points only where genuine daily case data are available: each point refits the same trend to eight non-overlapping seven-day totals ending on that day. Once the source becomes weekly-only, points occur only at completed week endings. Synthetic daily equivalents never create daily growth points. All weekly rolling averages and comparisons are computed on the full sourced history **before** the year and month display filters, so the first visible point can use earlier weeks. After the first reported 2022 case, missing source dates invalidate affected windows; only the pre-onset period through May 18, 2022 is assumed to contain zero cases.
+
+### 3. Convert weekly reporting to daily equivalents for legacy displays
 
 The current source reports weekly totals by `week_ending`. To combine this with daily historical data, each weekly total is distributed evenly across the days in that reporting week.
 
@@ -88,9 +99,9 @@ daily equivalent = 1 case per day from 2026-05-03 through 2026-05-09
 
 At the start of a calendar year, the expansion does not cross into the prior year. For example, a week ending on January 4 is distributed across January 1 through January 4.
 
-This daily-equivalent transformation preserves the weekly total while creating a continuous series suitable for smoothing and year-over-year charting.
+This daily-equivalent transformation preserves the weekly total while creating a continuous series for smoothing and the calendar-year cumulative chart. It is **not** used to calculate the current stoplight, weekly growth, recent case level, momentum, or year-over-year percentage chart.
 
-### 3. Build a continuous daily series
+### 4. Build a continuous daily series for legacy displays
 
 The standardized sources are combined into one daily time series from January 1, 2022 through the latest available data date.
 
@@ -100,9 +111,9 @@ For overlapping periods, the pipeline uses:
 - Historical daily source before the current weekly source's first year.
 - Current weekly daily-equivalent source for the current reporting period.
 
-Dates with no reported cases are filled with zero cases. This makes smoothing deterministic and avoids gaps in the charted series.
+Dates with no reported cases are filled with zero in this display series. That fill does not turn missing-source weeks into observed zero-case weeks for the current signals.
 
-### 4. Smooth the case signal
+### 5. Smooth the legacy daily-equivalent case signal
 
 The dashboard reports smoothed daily cases using a trailing Gaussian rolling mean:
 
@@ -111,11 +122,11 @@ window = 14 days
 standard deviation = 5 days
 ```
 
-This reduces noise from irregular reporting while retaining short-term changes. The same Gaussian smoother is also applied to `log(1 + cases)` for the risk-index calculation.
+This reduces noise from irregular reporting while retaining short-term changes. The same Gaussian smoother is also applied to `log(1 + cases)` for the legacy risk-index calculation. Neither smoothing step sets a current stoplight color.
 
 The implementation does not require SciPy; it computes normalized Gaussian weights directly in `src/mpox_tracker/model.py`.
 
-### 5. Compute the historical observed-daily growth index
+### 6. Compute the historical observed-daily growth index
 
 The separate historical daily index is based on the day-to-day change in smoothed log case activity:
 
@@ -135,7 +146,7 @@ Interpretation:
 
 This series requires a complete 14-day window of observed daily-source records and is suppressed in weekly-only reporting years. It is not used for the current stoplight. Neither it nor the weekly growth trend is an Rt estimate, incidence rate, forecast, probability of infection, or official risk classification.
 
-### 6. Assign historical daily-index bands
+### 7. Assign historical daily-index bands
 
 The data feed retains these legacy bands for compatibility; the dashboard no longer displays the separate daily-index section:
 
@@ -149,13 +160,13 @@ The data feed retains these legacy bands for compatibility; the dashboard no lon
 
 These thresholds are pragmatic historical display ranges, not validated public-health alert levels.
 
-### 7. Align years for seasonal charts
+### 8. Align years for seasonal charts
 
 For year-over-year charts, dates are aligned by month and day. February 29 is omitted so leap years and non-leap years share the same comparison axis.
 
-The seasonal view is for visual comparison only. The historical observed-daily index is computed on the continuous daily time series before this month-day alignment is applied.
+The seasonal view is for visual comparison only. The historical observed-daily index is computed on the continuous daily time series before this month-day alignment is applied. Hover labels retain each observation's actual ending date, rather than implying that different years share an identical week ending.
 
-### 8. Suppress January 2024 risk-index values
+### 9. Suppress January 2024 risk-index values
 
 January 2024 risk-index values are intentionally published as `null`.
 
@@ -168,7 +179,7 @@ Use the tracker to answer questions such as:
 - Is the smoothed NYC mpox case signal rising, falling, or flat?
 - How does current case activity compare with the same calendar period in prior years?
 - When was the dashboard last generated, and what was the latest source-data date?
-- Are headline risk bands supported by visible changes in the case series?
+- Do the four descriptive stoplight rows agree with the underlying weekly counts and their recent direction?
 
 Do not use the tracker to determine whether a specific person should seek vaccination, testing, treatment, or clinical care. For individual health decisions, use official public health guidance and clinical consultation.
 
@@ -178,6 +189,7 @@ Do not use the tracker to determine whether a specific person should seek vaccin
 - Weekly totals are distributed evenly across each week, so day-level values in the current period are daily equivalents rather than observed daily diagnoses.
 - Low-count periods can make percentage or log-change indicators unstable.
 - Reporting lags can make the most recent week incomplete or subject to revision.
+- No wastewater or vaccination coverage data are included. A wastewater reporting gap must not be interpreted as an absence of mpox circulation.
 - The risk bands are not calibrated to clinical outcomes, hospitalization risk, or transmission-model estimates.
 - This is an unofficial analysis of public data and may differ from official NYC Health summaries.
 
