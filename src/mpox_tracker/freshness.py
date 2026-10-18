@@ -3,12 +3,37 @@
 from __future__ import annotations
 
 import argparse
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 import json
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 
 PUBLIC_DATA_URL = "https://donnellymjd.github.io/mpox-risk-tracker/data/risk_data.json"
+NYC_TIME = ZoneInfo("America/New_York")
+PUBLICATION_GRACE = timedelta(days=2)
+
+
+def latest_due_case_week(now: datetime) -> date:
+    """Last Saturday expected after NYC's second-Thursday, 4 p.m. release.
+
+    NYC publishes weekly bins together once a month. Allow two days for a
+    delayed release or the scheduled tracker build before alerting.
+    """
+
+    local_now = now.astimezone(NYC_TIME)
+    year, month = local_now.year, local_now.month
+    first = date(year, month, 1)
+    second_thursday = 1 + (3 - first.weekday()) % 7 + 7
+    release = datetime(year, month, second_thursday, 16, tzinfo=NYC_TIME)
+    if local_now < release + PUBLICATION_GRACE:
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+        first = date(year, month, 1)
+        second_thursday = 1 + (3 - first.weekday()) % 7 + 7
+        release = datetime(year, month, second_thursday, 16, tzinfo=NYC_TIME)
+    return release.date() - timedelta(days=5)
 
 
 def _utc_datetime(value: object) -> datetime | None:
@@ -44,9 +69,11 @@ def check_freshness(payload: object, *, now: datetime) -> list[str]:
     if as_of is None:
         reasons.append("The latest completed case week is missing or invalid.")
     else:
-        age_days = (now.date() - as_of.date()).days
-        if age_days > 14 or age_days < 0:
-            reasons.append(f"The latest completed case week is {age_days} days old (allowed: 0 to 14).")
+        expected = latest_due_case_week(now)
+        if as_of.date() < expected:
+            reasons.append(f"NYC's scheduled monthly release appears overdue: latest case week {as_of.date()}, expected at least {expected}.")
+        elif as_of.date() > now.astimezone(NYC_TIME).date():
+            reasons.append("The latest completed case week is in the future.")
     if not isinstance(stoplight.get("rows"), list) or len(stoplight["rows"]) != 4:
         reasons.append("The published stoplight has no complete set of readings.")
     return reasons
@@ -67,7 +94,7 @@ def main() -> None:
         for reason in reasons:
             print(f"ALERT: {reason}")
         raise SystemExit(1)
-    print("Published tracker build and weekly stoplight are current.")
+    print("Published tracker build and latest scheduled NYC monthly release are current.")
 
 
 if __name__ == "__main__":
