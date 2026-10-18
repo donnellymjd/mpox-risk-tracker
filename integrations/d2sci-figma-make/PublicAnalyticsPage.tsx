@@ -322,7 +322,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
           <p className="text-sm text-gray-700">
             Last published NYC Health case week ending {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. NYC Health publishes these weekly counts monthly, on the second Thursday at 4 p.m. Eastern. These readings describe that release, not the intervening weeks. {hasWeeklyGrowth ? "Four views of case activity: the weekly growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : hasGrowthRow ? "Four views of case activity: the prior daily growth indicator, recent case level, momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : "Three views of case activity: recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts are unfavorable."}
           </p>
-          {slowGrowthWithElevatedCounts && <p className="mt-2 border-l-4 border-amber-600 bg-amber-50 p-3 text-sm text-amber-950">Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.</p>}
+          {slowGrowthWithElevatedCounts && <p className="mt-2 border-l-4 border-amber-600 bg-amber-50 p-3 text-sm text-amber-950">Case activity remained elevated at the last report even though growth pace was slow. Green here is not an all-clear.</p>}
           <p className="mt-2 text-xs text-gray-600">
             Source: <a href={stoplight.source_url ?? "https://www.nyc.gov/site/doh/health/health-topics/mpox.page"} target="_blank" rel="noreferrer" className="brand-blue hover:underline">NYC Health mpox cases</a>; {hasWeeklyGrowth ? "weekly growth trend" : "case activity"} and stoplight calculations by D²Sci in the upstream tracker. Open Why? for the rule and last color change.
           </p>
@@ -1000,11 +1000,11 @@ export function PublicAnalyticsPage() {
 
   const styling = useMemo(() => data ? mergeStyling(data.styling) : DEFAULT_STYLING, [data]);
 
-  const band = data?.summary.weekly_growth_label || (data || error ? "Weekly trend unavailable" : "Loading");
-  const growthColor = data?.summary.weekly_growth_color;
+  const currentStoplight = data && validCaseStoplight(data.case_stoplight, data.generated_at) ? data.case_stoplight : null;
+  const band = currentStoplight ? data?.summary.weekly_growth_label || "Weekly trend unavailable" : data || error ? "Weekly trend unavailable" : "Loading";
+  const growthColor = currentStoplight ? data?.summary.weekly_growth_color : null;
   const bandBg = { green: "#d8e8df", amber: "#fff0bf", red: "#f3b7b2" }[growthColor ?? ""] ?? FALLBACK_BAND_BG;
   const bandText = { green: "#256d4a", amber: "#8a6300", red: "#9a2f29" }[growthColor ?? ""] ?? FALLBACK_BAND_TEXT;
-  const currentStoplight = data && validCaseStoplight(data.case_stoplight, data.generated_at) ? data.case_stoplight : null;
   const redIndicatorCount = currentStoplight?.rows.filter((row) => row.reading.color === "red").length ?? 0;
 
   const cards = [
