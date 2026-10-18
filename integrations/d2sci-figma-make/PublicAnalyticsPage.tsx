@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Helmet } from "react-helmet-async";
+import { Link } from "react-router";
 import {
   ResponsiveContainer,
   LineChart,
@@ -13,9 +13,9 @@ import {
   Legend,
 } from "recharts";
 import { Button } from "./ui/button";
+import { Switch } from "./ui/switch";
 import { Card, CardContent } from "./ui/card";
 import {
-  ShieldCheck,
   Activity,
   History,
   RefreshCw,
@@ -285,13 +285,13 @@ const STOPLIGHT_COLORS: Record<StoplightColor, { label: string; className: strin
   red: { label: "Red", className: "bg-red-100 text-red-800 border-red-200" },
 };
 
-function validCaseStoplight(value: CaseStoplight | undefined): value is CaseStoplight {
+function validCaseStoplight(value: CaseStoplight | undefined, generatedAt: string): value is CaseStoplight {
   if (!value || (value.version !== 1 && value.version !== 2 && value.version !== 3) || typeof value.as_of !== "string" ||
       typeof value.four_weeks_ago_date !== "string" || !Array.isArray(value.rows) ||
       value.rows.length !== (value.version >= 2 ? 4 : 3) ||
       (value.version >= 2 && value.rows[0]?.key !== "growthIndicator")) return false;
-  const ageDays = (Date.now() - Date.parse(`${value.as_of}T00:00:00Z`)) / 86_400_000;
-  if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays > 14) return false;
+  const buildAgeHours = (Date.now() - Date.parse(generatedAt)) / 3_600_000;
+  if (!Number.isFinite(buildAgeHours) || buildAgeHours < -1 || buildAgeHours > 36) return false;
   const colors = new Set(["green", "amber", "red"]);
   return value.rows.every((row) => row && typeof row.key === "string" && typeof row.name === "string" &&
     typeof row.rule === "string" && typeof row.changed_at === "string" &&
@@ -301,7 +301,7 @@ function validCaseStoplight(value: CaseStoplight | undefined): value is CaseStop
 
 function StoplightTable({ data }: { data: TrackerData }) {
   const stoplight = data.case_stoplight;
-  if (!validCaseStoplight(stoplight)) return (
+  if (!validCaseStoplight(stoplight, data.generated_at)) return (
     <div className="rounded-lg border border-brand-gray/30 bg-white p-4 sm:p-6">
       <h2 id="case-stoplight-heading" className="brand-navy mb-2">NYC Mpox Case Activity Stoplight</h2>
       <p className="text-sm text-gray-600">{typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting current, compatible stoplight data from the upstream tracker."}</p>
@@ -320,7 +320,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
         <div className="border-b border-brand-gray/20 p-4 sm:p-6">
           <h2 id="case-stoplight-heading" className="brand-navy mb-2">NYC Mpox Case Activity Stoplight</h2>
           <p className="text-sm text-gray-700">
-            NYC Health data through {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. {hasWeeklyGrowth ? "Four views of case activity: the weekly growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : hasGrowthRow ? "Four views of case activity: the prior daily growth indicator, recent case level, momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : "Three views of case activity: recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts are unfavorable."}
+            Last published NYC Health case week ending {fmtDate(`${stoplight.as_of}T00:00:00Z`)}. NYC Health publishes these weekly counts monthly, on the second Thursday at 4 p.m. Eastern. These readings describe that release, not the intervening weeks. {hasWeeklyGrowth ? "Four views of case activity: the weekly growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : hasGrowthRow ? "Four views of case activity: the prior daily growth indicator, recent case level, momentum, and comparison with last year. Higher case counts and faster growth are unfavorable." : "Three views of case activity: recent case level, 4-week versus 13-week momentum, and comparison with last year. Higher case counts are unfavorable."}
           </p>
           {slowGrowthWithElevatedCounts && <p className="mt-2 border-l-4 border-amber-600 bg-amber-50 p-3 text-sm text-amber-950">Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.</p>}
           <p className="mt-2 text-xs text-gray-600">
@@ -361,7 +361,7 @@ function StoplightTable({ data }: { data: TrackerData }) {
                     </summary>
                     <div className="mt-2 w-64 text-xs leading-relaxed text-gray-700">
                       <p>{row.rule}</p>
-                      <p className="mt-2">Current color since the week ending {fmtDate(`${row.changed_at}T00:00:00Z`)}.</p>
+                      <p className="mt-2">Last reported color since the week ending {fmtDate(`${row.changed_at}T00:00:00Z`)}.</p>
                     </div>
                   </details>
                 </td>
@@ -540,7 +540,7 @@ const ACTIVITY_BANDS: Record<string, StyledRiskBand[]> = {
   ],
 };
 
-function MomentumComponentsChart({ data, selectedYears, monthRange }: { data: TrackerData; selectedYears: number[]; monthRange: MonthRange }) {
+function MomentumComponentsChart({ data, selectedYears, monthRange, useLinePatterns }: { data: TrackerData; selectedYears: number[]; monthRange: MonthRange; useLinePatterns: boolean }) {
   const year = selectedYears.at(-1);
   const range = dayRange(monthRange);
   // The upstream feed calculates rolling averages across the full history;
@@ -561,13 +561,13 @@ function MomentumComponentsChart({ data, selectedYears, monthRange }: { data: Tr
         <div style={{ height: 360 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={rows} margin={{ top: 16, right: 24, bottom: 24, left: 12 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey="day_index" type="number" domain={[range.start, range.end]} ticks={MONTH_TICKS.filter((m) => m.day >= range.start && m.day <= range.end).map((m) => m.day)} tickFormatter={(d) => MONTH_TICKS.find((m) => m.day === d)?.label ?? ""} tick={{ fontSize: 11 }} />
-              <YAxis domain={[0, "auto"]} tick={{ fontSize: 11 }} />
-              <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? "Week ending"} formatter={(value: any, name: any) => [Number(value).toFixed(2), String(name)]} />
-              <Legend verticalAlign="bottom" content={() => <PatternLegend items={lines} />} />
-              {lines.map((line) => <Line key={line.key} dataKey={line.key} name={line.name} stroke={line.color} strokeDasharray={line.dash} strokeWidth={line.key === "weekly_cases" ? 2.6 : 3} dot={false} connectNulls={false} isAnimationActive={false} />)}
-              {latestWeek && <ReferenceLine x={latestWeek.day_index} stroke="#0f172a" strokeDasharray="4 4" />}
+              <CartesianGrid key="momentum-grid" stroke="#e5e7eb" vertical={false} />
+              <XAxis key="momentum-x-axis" dataKey="day_index" type="number" domain={[range.start, range.end]} ticks={MONTH_TICKS.filter((m) => m.day >= range.start && m.day <= range.end).map((m) => m.day)} tickFormatter={(d) => MONTH_TICKS.find((m) => m.day === d)?.label ?? ""} tick={{ fontSize: 11 }} />
+              <YAxis key="momentum-y-axis" domain={[0, "auto"]} tick={{ fontSize: 11 }} />
+              <Tooltip key="momentum-tooltip" labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? "Week ending"} formatter={(value: any, name: any) => [Number(value).toFixed(2), String(name)]} />
+              <Legend key="momentum-legend" verticalAlign="bottom" content={() => <PatternLegend items={lines.map((line) => ({ ...line, dash: useLinePatterns ? line.dash : undefined, pattern: useLinePatterns ? line.pattern : "solid" }))} />} />
+              {lines.map((line) => <Line key={line.key} type="linear" dataKey={line.key} name={line.name} stroke={line.color} strokeDasharray={useLinePatterns ? line.dash : undefined} strokeWidth={line.key === "weekly_cases" ? 2.6 : 3} dot={false} activeDot={useLinePatterns} connectNulls={false} isAnimationActive={false} />)}
+              {latestWeek && <ReferenceLine key="momentum-latest-week" x={latestWeek.day_index} stroke="#0f172a" strokeDasharray="4 4" />}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -595,6 +595,7 @@ function TrackerChart({
   yLabel,
   sourceRows,
   title,
+  useLinePatterns,
 }: {
   data: TrackerData;
   styling: Styling;
@@ -605,6 +606,7 @@ function TrackerChart({
   yLabel: string;
   sourceRows?: ChartPoint[];
   title?: string;
+  useLinePatterns: boolean;
 }) {
   const chartData = useMemo(
     () => buildChartData(data, selectedYears, field, monthRange, sourceRows),
@@ -743,13 +745,14 @@ function TrackerChart({
           <Legend
             key="legend"
             verticalAlign="bottom"
-            content={() => <PatternLegend items={plottedYears.map((year) => ({ name: `${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`, color: styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR, dash: linePatternForYear(year).dash, pattern: linePatternForYear(year).label }))} />}
+            content={() => <PatternLegend items={plottedYears.map((year) => ({ name: `${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`, color: styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR, dash: useLinePatterns ? linePatternForYear(year).dash : undefined, pattern: useLinePatterns ? linePatternForYear(year).label : "solid" }))} />}
           />
           {latest && typeof latest[field] === "number" && Number.isFinite(latest[field]) &&
             selectedYears.includes(data.current_year) &&
             latest.day_index >= range.start &&
             latest.day_index <= range.end && (
             <ReferenceLine
+              key="latest-data-marker"
               id="latest-data-marker"
               x={latest.day_index}
               stroke="#0f172a"
@@ -767,14 +770,15 @@ function TrackerChart({
             <Line
               key={year}
               id={`line-${year}`}
-              type="monotone"
+              type="linear"
               dataKey={`y${year}`}
               name={`${year}${frequencyByYear[year] ? ` · ${frequencyByYear[year]}` : ""}`}
               stroke={styling.yearColors[String(year)] ?? FALLBACK_YEAR_COLOR}
-              strokeDasharray={linePatternForYear(year).dash}
+              strokeDasharray={useLinePatterns ? linePatternForYear(year).dash : undefined}
               strokeWidth={year === data.current_year ? 3.4 : 2.5}
               strokeOpacity={1}
-              dot={field === "weekly_growth_percent" && frequencyByYear[year] === "weekly" ? { r: 2 } : false}
+              dot={useLinePatterns && field === "weekly_growth_percent" && frequencyByYear[year] === "weekly" ? { r: 2 } : false}
+              activeDot={useLinePatterns}
               connectNulls={true}
               isAnimationActive={false}
             />
@@ -939,6 +943,7 @@ export function PublicAnalyticsPage() {
   const [data, setData] = useState<TrackerData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedYears, setSelectedYears] = useState<Set<number>>(new Set());
+  const [useLinePatterns, setUseLinePatterns] = useState(false);
   const [monthRange, setMonthRange] = useState<MonthRange>({
     startMonthIndex: 0,
     endMonthIndex: MONTH_TICKS.length - 1,
@@ -993,19 +998,19 @@ export function PublicAnalyticsPage() {
     [selectedYears],
   );
 
-  const styling = useMemo(() => mergeStyling(data?.styling), [data?.styling]);
+  const styling = useMemo(() => data ? mergeStyling(data.styling) : DEFAULT_STYLING, [data]);
 
   const band = data?.summary.weekly_growth_label || (data || error ? "Weekly trend unavailable" : "Loading");
   const growthColor = data?.summary.weekly_growth_color;
   const bandBg = { green: "#d8e8df", amber: "#fff0bf", red: "#f3b7b2" }[growthColor ?? ""] ?? FALLBACK_BAND_BG;
   const bandText = { green: "#256d4a", amber: "#8a6300", red: "#9a2f29" }[growthColor ?? ""] ?? FALLBACK_BAND_TEXT;
-  const currentStoplight = data && validCaseStoplight(data.case_stoplight) ? data.case_stoplight : null;
+  const currentStoplight = data && validCaseStoplight(data.case_stoplight, data.generated_at) ? data.case_stoplight : null;
   const redIndicatorCount = currentStoplight?.rows.filter((row) => row.reading.color === "red").length ?? 0;
 
   const cards = [
     {
       icon: <Activity className="h-8 w-8 brand-blue" />,
-      title: "Current signal",
+      title: "Latest reported signal",
       description:
         "A clear, at-a-glance read of NYC mpox case activity derived from the latest case reporting — refreshed automatically when NYC Health updates its data.",
     },
@@ -1013,7 +1018,7 @@ export function PublicAnalyticsPage() {
       icon: <History className="h-8 w-8 brand-teal" />,
       title: "Historical context",
       description:
-        "Comparisons against prior outbreak periods help frame whether today's signal is elevated, normal, or trending — turning raw counts into informed perspective.",
+        "Comparisons against prior outbreak periods help frame whether the latest reported signal is elevated, normal, or trending — turning raw counts into informed perspective.",
     },
     {
       icon: <RefreshCw className="h-8 w-8 brand-blue" />,
@@ -1025,34 +1030,26 @@ export function PublicAnalyticsPage() {
 
   return (
     <div className="min-h-screen">
-      <Helmet>
-        <title>Public Data Tools | D2Sci</title>
-        <meta
-          name="description"
-          content="A D2Sci public data tool that turns NYC mpox case reporting into a regularly refreshed spread-risk signal, historical comparisons, and links to respected health resources."
-        />
-      </Helmet>
 
       {/* Hero */}
-      <section className="bg-gradient-navy-to-orange text-white py-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-brand-navy/70"></div>
-        <div className="max-w-5xl mx-auto text-center relative">
-          <ShieldCheck className="h-14 w-14 mx-auto mb-6 brand-teal" />
-          <p className="text-sm uppercase tracking-wider opacity-80 mb-3">
-            Public Analytics / Health Signal Monitoring
+      <section className="border-b border-border bg-background px-6 py-12 lg:py-16">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
+          <p className="text-[10px] tracking-[0.16em] text-accent">
+            PUBLIC DATA / NYC HEALTH SURVEILLANCE
           </p>
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">
-            NYC Mpox Spread Risk Tracker
+          <span className="text-xs text-muted-foreground">{data ? `Latest source week ending ${fmtDate(`${data.latest_data_date}T00:00:00Z`)}` : "Checking the latest available source data…"}</span>
+          </div>
+          <h1 className="max-w-4xl font-display text-4xl font-normal leading-tight sm:text-6xl">
+            NYC Mpox<br />Spread Risk Tracker<span className="text-accent">.</span>
           </h1>
-          <p className="text-lg md:text-xl mb-8 max-w-3xl mx-auto opacity-90">
-            A D²Sci public data tool that turns NYC mpox case reporting into a
-            regularly refreshed spread-risk signal, historical comparisons, and
-            links to respected health resources.
+          <p className="mb-7 mt-5 max-w-2xl text-sm leading-7 text-muted-foreground">
+            Reported cases, weekly trends, and historical context. An independent public tool based on NYC Health data—not an estimate of individual risk.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-wrap items-center gap-5">
             <Button
               size="lg"
-              className="bg-brand-teal hover:bg-brand-teal/90 text-white"
+              className="rounded-none bg-primary text-white hover:bg-accent"
               onClick={() =>
                 document
                   .getElementById("indicator")
@@ -1064,12 +1061,13 @@ export function PublicAnalyticsPage() {
             <Button
               size="lg"
               variant="outline"
-              className="bg-transparent border-white text-white hover:bg-white hover:text-brand-navy"
+              className="rounded-none border-border bg-transparent text-foreground hover:bg-secondary"
               onClick={() => window.open(REPO_URL, "_blank")}
             >
               <Github className="h-4 w-4 mr-2" />
               View Methodology
             </Button>
+            <Link to="/work/mpox" className="border-b border-border pb-1 text-xs text-muted-foreground hover:text-accent">About this project ↗</Link>
           </div>
         </div>
       </section>
@@ -1104,7 +1102,7 @@ export function PublicAnalyticsPage() {
               }}
             >
               <div className="text-xs uppercase tracking-wide text-gray-700 mb-1">
-                Weekly case growth trend
+                Weekly case growth at last report
               </div>
               <div
                 className="text-2xl font-bold"
@@ -1115,18 +1113,18 @@ export function PublicAnalyticsPage() {
             </div>
             <div className="rounded-lg p-5 bg-brand-gray/20 border border-brand-gray/30">
               <div className="text-xs uppercase tracking-wide text-gray-700 mb-1">
-                Indicators red
+                Indicators red at last report
               </div>
               <div className="text-2xl font-bold brand-navy">
                 {currentStoplight ? `${Math.round((redIndicatorCount / currentStoplight.rows.length) * 100)}%` : "--"}
               </div>
               <div className="text-xs text-gray-600 mt-1">
-                {currentStoplight ? `${redIndicatorCount} of ${currentStoplight.rows.length} current indicators` : "Current case stoplight unavailable"}
+                {currentStoplight ? `${redIndicatorCount} of ${currentStoplight.rows.length} indicators at last report` : "Last reported stoplight unavailable"}
               </div>
             </div>
             <div className="rounded-lg p-5 bg-brand-gray/20 border border-brand-gray/30">
               <div className="text-xs uppercase tracking-wide text-gray-700 mb-1">
-                Cases, last 28 days
+                Cases in last 28 reported days
               </div>
               <div className="text-2xl font-bold brand-navy">
                 {data?.summary.cases_last_28_days !== null &&
@@ -1197,6 +1195,7 @@ export function PublicAnalyticsPage() {
                     data={data}
                     styling={styling}
                     selectedYears={selectedYearsArray}
+                    useLinePatterns={useLinePatterns}
                     monthRange={monthRange}
                     field="weekly_growth_percent"
                     sourceRows={data.case_growth_series ?? data.case_activity_series}
@@ -1254,7 +1253,7 @@ export function PublicAnalyticsPage() {
                   {chart.field === "momentum_percent" && (
                     <div className="mb-8">
                       <h3 className="brand-navy font-semibold mb-2">Weekly cases and rolling averages</h3>
-                      <MomentumComponentsChart data={data} selectedYears={selectedYearsArray} monthRange={monthRange} />
+                      <MomentumComponentsChart data={data} selectedYears={selectedYearsArray} monthRange={monthRange} useLinePatterns={useLinePatterns} />
                       <p className="mt-2 text-xs text-gray-600">Source: NYC Health mpox cases; weekly counts and rolling averages by D²Sci. The year and month controls above apply.</p>
                       <h3 className="brand-navy font-semibold mt-8 mb-2">Momentum percentage by calendar date</h3>
                     </div>
@@ -1263,6 +1262,7 @@ export function PublicAnalyticsPage() {
                     data={data}
                     styling={styling}
                     selectedYears={selectedYearsArray}
+                    useLinePatterns={useLinePatterns}
                     monthRange={monthRange}
                     field={chart.field}
                     sourceRows={data.case_activity_series}
@@ -1300,6 +1300,7 @@ export function PublicAnalyticsPage() {
                     data={data}
                     styling={styling}
                     selectedYears={selectedYearsArray}
+                    useLinePatterns={useLinePatterns}
                     monthRange={monthRange}
                     field="cumulative_cases"
                     yLabel="Cumulative reported cases"
@@ -1317,6 +1318,28 @@ export function PublicAnalyticsPage() {
           </Card>
         </div>
       </section>
+
+      {data && (
+        <div className="mx-auto max-w-6xl px-4 pb-8">
+          <div className="flex items-center gap-3 rounded-md border border-brand-gray/30 bg-white px-4 py-3">
+            <Switch
+              id="line-patterns"
+              checked={useLinePatterns}
+              onCheckedChange={setUseLinePatterns}
+              aria-describedby="line-patterns-description"
+              className="data-[state=checked]:bg-brand-navy"
+            />
+            <div>
+              <label htmlFor="line-patterns" className="cursor-pointer text-sm font-semibold brand-navy">
+                Use line patterns
+              </label>
+              <p id="line-patterns-description" className="text-xs text-gray-600">
+                Add dashes and dots to distinguish lines without relying on color. Applies to all charts.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Method */}
       <section id="method" className="py-16 px-4 bg-gray-50">
