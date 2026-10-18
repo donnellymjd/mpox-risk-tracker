@@ -780,8 +780,10 @@ function drawMomentumComponents(data, years, activity) {
 }
 
 function renderSummary(data) {
-  const growthColor = data.summary.weekly_growth_color;
-  byId("riskBand").textContent = data.summary.weekly_growth_label || "Unavailable";
+  const buildAgeHours = (Date.now() - Date.parse(data.generated_at)) / 3600000;
+  const freshStoplight = Number.isFinite(buildAgeHours) && buildAgeHours >= -1 && buildAgeHours <= 36 && data.case_stoplight?.rows?.length === 4;
+  const growthColor = freshStoplight ? data.summary.weekly_growth_color : null;
+  byId("riskBand").textContent = freshStoplight ? data.summary.weekly_growth_label || "Unavailable" : "Unavailable";
   byId("last28").textContent = valueText(data.summary.cases_last_28_days);
   byId("latestDate").textContent = fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`));
   byId("generatedAt").textContent = `Generated ${fmt.format(new Date(data.generated_at))}`;
@@ -836,7 +838,7 @@ function renderStoplight(data) {
   const contrast = byId("stoplightContrast");
   const elevatedCounts = stoplight.rows.some((item) => (item.key === "level" || item.key === "momentum") && item.reading.color === "red");
   contrast.hidden = !(stoplight.rows[0].reading.color === "green" && elevatedCounts);
-  contrast.textContent = contrast.hidden ? "" : "Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.";
+  contrast.textContent = contrast.hidden ? "" : "Case activity remained elevated at the last report even though growth pace was slow. Green here is not an all-clear.";
 
   byId("stoplightMeta").textContent = `Last published NYC Health case week ending ${fmt.format(new Date(`${stoplight.as_of}T00:00:00Z`))}. NYC Health publishes these weekly counts monthly, on the second Thursday at 4 p.m. The four readings describe that release, not the intervening weeks.`;
   byId("stoplightPriorDate").textContent = `As of ${fmt.format(new Date(`${stoplight.four_weeks_ago_date}T00:00:00Z`))}`;
@@ -865,7 +867,7 @@ function renderStoplight(data) {
     const rule = document.createElement("p");
     rule.textContent = item.rule;
     const changedNote = document.createElement("p");
-    changedNote.textContent = `Current color since the week ending ${changed}.`;
+    changedNote.textContent = `Last reported color since the week ending ${changed}.`;
     details.append(summary, rule, changedNote);
     detailCell.append(details);
     row.append(name, status, latest, prior, detailCell);
