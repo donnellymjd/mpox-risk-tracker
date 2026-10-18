@@ -99,9 +99,6 @@ def build_case_stoplight(frame: pd.DataFrame, *, source_url: str | None = None, 
     dates = weekly["week_ending"].dt.strftime("%Y-%m-%d").tolist()
     counts = weekly["cases"].astype(int).tolist()
     result["as_of"] = dates[-1]
-    if (today - weekly["week_ending"].iloc[-1].date()).days > 14:
-        result["unavailable_reason"] = "The latest completed reporting week is more than 14 days old."
-        return result
     if len(counts) < 69:
         result["unavailable_reason"] = "At least 69 weekly observations are needed for the four-week-ago year comparison."
         return result
