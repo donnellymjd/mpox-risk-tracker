@@ -103,7 +103,7 @@ def test_year_comparison_exact_green_boundary_and_zero_baseline() -> None:
     assert rows["yearOverYear"]["reading"]["color"] == "red"
 
 
-def test_in_progress_week_excluded_and_stale_data_suppressed() -> None:
+def test_in_progress_week_excluded_and_monthly_source_readings_retained() -> None:
     dates = pd.date_range(end="2026-10-03", periods=69, freq="7D")
     frame = pd.DataFrame({"week_ending": dates, "cases": [1] * 69})
     frame.loc[len(frame)] = {"week_ending": pd.Timestamp("2026-10-17"), "cases": 99}
@@ -111,6 +111,6 @@ def test_in_progress_week_excluded_and_stale_data_suppressed() -> None:
     assert payload["as_of"] == "2026-10-03"
     assert payload["rows"]
 
-    stale = build_case_stoplight(frame.iloc[:-1], today=date(2026, 10, 25))
-    assert stale["rows"] == []
-    assert "more than 14 days old" in stale["unavailable_reason"]
+    later = build_case_stoplight(frame.iloc[:-1], today=date(2026, 10, 25))
+    assert len(later["rows"]) == 4
+    assert later["as_of"] == "2026-10-03"

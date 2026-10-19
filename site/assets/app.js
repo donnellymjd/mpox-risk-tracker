@@ -780,8 +780,10 @@ function drawMomentumComponents(data, years, activity) {
 }
 
 function renderSummary(data) {
-  const growthColor = data.summary.weekly_growth_color;
-  byId("riskBand").textContent = data.summary.weekly_growth_label || "Unavailable";
+  const buildAgeHours = (Date.now() - Date.parse(data.generated_at)) / 3600000;
+  const freshStoplight = Number.isFinite(buildAgeHours) && buildAgeHours >= -1 && buildAgeHours <= 36 && data.case_stoplight?.rows?.length === 4;
+  const growthColor = freshStoplight ? data.summary.weekly_growth_color : null;
+  byId("riskBand").textContent = freshStoplight ? data.summary.weekly_growth_label || "Unavailable" : "Unavailable";
   byId("last28").textContent = valueText(data.summary.cases_last_28_days);
   byId("latestDate").textContent = fmt.format(new Date(`${data.latest_data_date}T00:00:00Z`));
   byId("generatedAt").textContent = `Generated ${fmt.format(new Date(data.generated_at))}`;
@@ -807,11 +809,11 @@ function renderStoplight(data) {
   const stoplight = data.case_stoplight;
   const body = byId("stoplightBody");
   clear(body);
-  const ageDays = stoplight?.as_of ? (Date.now() - Date.parse(`${stoplight.as_of}T00:00:00Z`)) / 86400000 : NaN;
+  const buildAgeHours = (Date.now() - Date.parse(data.generated_at)) / 3600000;
   const colors = new Set(["green", "amber", "red"]);
   const valid = stoplight?.version === 3 && typeof stoplight.as_of === "string" &&
     typeof stoplight.four_weeks_ago_date === "string" && Array.isArray(stoplight.rows) &&
-    stoplight.rows.length === 4 && stoplight.rows[0]?.key === "growthIndicator" && Number.isFinite(ageDays) && ageDays >= 0 && ageDays <= 14 &&
+    stoplight.rows.length === 4 && stoplight.rows[0]?.key === "growthIndicator" && Number.isFinite(buildAgeHours) && buildAgeHours >= -1 && buildAgeHours <= 36 &&
     stoplight.rows.every((item) => item && typeof item.name === "string" && typeof item.rule === "string" &&
       typeof item.changed_at === "string" && item.reading && colors.has(item.reading.color) &&
       typeof item.reading.value === "string" && item.four_weeks_ago && colors.has(item.four_weeks_ago.color) &&
@@ -823,7 +825,7 @@ function renderStoplight(data) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
-    cell.textContent = typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting current, compatible stoplight data from the tracker build.";
+    cell.textContent = typeof stoplight?.unavailable_reason === "string" ? stoplight.unavailable_reason : "Awaiting a recently generated, compatible stoplight feed.";
     row.append(cell);
     body.append(row);
     return;
@@ -831,14 +833,14 @@ function renderStoplight(data) {
 
   const redCount = stoplight.rows.filter((item) => item.reading.color === "red").length;
   byId("redIndicatorShare").textContent = `${Math.round((redCount / stoplight.rows.length) * 100)}%`;
-  byId("redIndicatorCount").textContent = `${redCount} of ${stoplight.rows.length} current indicators`;
+  byId("redIndicatorCount").textContent = `${redCount} of ${stoplight.rows.length} indicators at last report`;
 
   const contrast = byId("stoplightContrast");
   const elevatedCounts = stoplight.rows.some((item) => (item.key === "level" || item.key === "momentum") && item.reading.color === "red");
   contrast.hidden = !(stoplight.rows[0].reading.color === "green" && elevatedCounts);
-  contrast.textContent = contrast.hidden ? "" : "Case activity remains elevated even though the current growth pace is slow. Green here is not an all-clear.";
+  contrast.textContent = contrast.hidden ? "" : "Case activity remained elevated at the last report even though growth pace was slow. Green here is not an all-clear.";
 
-  byId("stoplightMeta").textContent = `NYC Health data through ${fmt.format(new Date(`${stoplight.as_of}T00:00:00Z`))}. Weekly case growth trend, recent case level, 4-week versus 13-week momentum, and comparison with last year.`;
+  byId("stoplightMeta").textContent = `Last published NYC Health case week ending ${fmt.format(new Date(`${stoplight.as_of}T00:00:00Z`))}. NYC Health publishes these weekly counts monthly, on the second Thursday at 4 p.m. The four readings describe that release, not the intervening weeks.`;
   byId("stoplightPriorDate").textContent = `As of ${fmt.format(new Date(`${stoplight.four_weeks_ago_date}T00:00:00Z`))}`;
   if (stoplight.source_url) byId("stoplightSource").href = stoplight.source_url;
 
@@ -865,7 +867,7 @@ function renderStoplight(data) {
     const rule = document.createElement("p");
     rule.textContent = item.rule;
     const changedNote = document.createElement("p");
-    changedNote.textContent = `Current color since the week ending ${changed}.`;
+    changedNote.textContent = `Last reported color since the week ending ${changed}.`;
     details.append(summary, rule, changedNote);
     detailCell.append(details);
     row.append(name, status, latest, prior, detailCell);
